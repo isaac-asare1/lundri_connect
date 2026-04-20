@@ -1,0 +1,134 @@
+{
+  "project_info": {
+    "project_number": "464337931141",
+    "project_id": "omeeo-wash",
+    "storage_bucket": "omeeo-wash.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464337931141:android:ad894e6f1fac5f34c7d2ec",
+        "android_client_info": {
+          "package_name": "com.example.lundri"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "464337931141-g3l5c60rtusfkpkmpb3jt2rep8o84dlk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXTGJHue1DyE3vLG6Uf6dNVRV2yvHAS5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "464337931141-g3l5c60rtusfkpkmpb3jt2rep8o84dlk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "464337931141-erghfb3ssma25rfop8ak196vj6oh9np3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.lundri"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464337931141:android:5df132e4eb6b5683c7d2ec",
+        "android_client_info": {
+          "package_name": "com.example.lundri_connect"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "464337931141-g3l5c60rtusfkpkmpb3jt2rep8o84dlk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXTGJHue1DyE3vLG6Uf6dNVRV2yvHAS5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "464337931141-g3l5c60rtusfkpkmpb3jt2rep8o84dlk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "464337931141-erghfb3ssma25rfop8ak196vj6oh9np3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.lundri"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464337931141:android:9bba13821fd8cd71c7d2ec",
+        "android_client_info": {
+          "package_name": "com.omeeowash"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "464337931141-2rdgeqg9lemgm169cn6clhujiqquiav0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.omeeowash",
+            "certificate_hash": "e5d2a95a27b6a9b1978c8bf673642722ac40afec"
+          }
+        },
+        {
+          "client_id": "464337931141-hrtnk0dr2d676cede7qh1m1ilb58k31u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.omeeowash",
+            "certificate_hash": "6f6a8feab86d77aaece76642f3c283c0800b20eb"
+          }
+        },
+        {
+          "client_id": "464337931141-g3l5c60rtusfkpkmpb3jt2rep8o84dlk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXTGJHue1DyE3vLG6Uf6dNVRV2yvHAS5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "464337931141-g3l5c60rtusfkpkmpb3jt2rep8o84dlk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "464337931141-erghfb3ssma25rfop8ak196vj6oh9np3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.lundri"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
