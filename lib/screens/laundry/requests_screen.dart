@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../models/app_user_model.dart';
 import '../../models/booking_model.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/loading_widget.dart';
@@ -47,7 +48,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   @override
   Widget build(BuildContext context) {
     final userProvider = context.watch<UserProvider>();
-    final operatorId = userProvider.currentUser?.id ?? '';
+    final laundryId = userProvider.currentUser?.id ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
@@ -73,44 +74,77 @@ class _OrdersScreenState extends State<OrdersScreen>
               color: const Color(0xFFF0F2F7),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: TabBar(
-              controller: _tabController,
-              indicator: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              dividerColor: Colors.transparent,
-              labelColor: Colors.white,
-              unselectedLabelColor: AppColors.textSecondary,
-              labelStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-              tabs: const [
-                Tab(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    child: Text('New Orders'),
+            child: laundryId.isEmpty
+                ? TabBar(
+                    controller: _tabController,
+                    indicator: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    dividerColor: Colors.transparent,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: AppColors.textSecondary,
+                    labelStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    tabs: const [
+                      Tab(child: Text('New Orders')),
+                      Tab(child: Text('Active Orders')),
+                    ],
+                  )
+                : StreamBuilder<Map<String, int>>(
+                    stream: _ordersService.streamOrderCounts(laundryId),
+                    builder: (context, snapshot) {
+                      final counts =
+                          snapshot.data ?? const {'new': 0, 'active': 0};
+
+                      return TabBar(
+                        controller: _tabController,
+                        indicator: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        dividerColor: Colors.transparent,
+                        labelColor: Colors.white,
+                        unselectedLabelColor: AppColors.textSecondary,
+                        labelStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        unselectedLabelStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        tabs: [
+                          Tab(
+                            child: _TabLabelWithBadge(
+                              label: 'New Orders',
+                              count: counts['new'] ?? 0,
+                              isSelected: _tabController.index == 0,
+                            ),
+                          ),
+                          Tab(
+                            child: _TabLabelWithBadge(
+                              label: 'Active Orders',
+                              count: counts['active'] ?? 0,
+                              isSelected: _tabController.index == 1,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                ),
-                Tab(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    child: Text('Active Orders'),
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
       body: userProvider.isLoading
           ? const LoadingWidget(message: 'Loading orders...')
-          : operatorId.isEmpty
+          : laundryId.isEmpty
           ? const Center(
               child: Text(
                 'Operator account not found.',
@@ -121,7 +155,7 @@ class _OrdersScreenState extends State<OrdersScreen>
               controller: _tabController,
               children: [
                 _OrdersListView(
-                  stream: _ordersService.streamNewOrders(operatorId),
+                  stream: _ordersService.streamNewOrders(laundryId),
                   emptyTitle: 'No new orders',
                   emptySubtitle:
                       'Incoming laundry booking requests will appear here.',
@@ -129,25 +163,35 @@ class _OrdersScreenState extends State<OrdersScreen>
                   itemBuilder: (booking) => _NewOrderCard(
                     booking: booking,
                     onAccept: () async {
-                      await _ordersService.acceptOrder(booking.id);
+                      await _ordersService.acceptOrder(
+                        bookingId: booking.id,
+                        currentUser: userProvider.currentUser,
+                      );
 
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Order accepted. Looking for a rider now.',
+                            'Order accepted. Looking for a pickup rider now.',
                           ),
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
                     },
-                    onReject: () async {
-                      await _ordersService.rejectOrder(booking.id);
+                    onReject: (reason, note) async {
+                      await _ordersService.rejectOrder(
+                        bookingId: booking.id,
+                        laundryId: laundryId,
+                        reason: reason,
+                        note: note,
+                      );
 
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Order rejected'),
+                          content: Text(
+                            'Order rejected. Reassigning to another laundry.',
+                          ),
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
@@ -155,7 +199,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                   ),
                 ),
                 _OrdersListView(
-                  stream: _ordersService.streamActiveOrders(operatorId),
+                  stream: _ordersService.streamActiveOrders(laundryId),
                   emptyTitle: 'No active orders',
                   emptySubtitle:
                       'Accepted and in-progress orders will appear here.',
@@ -163,14 +207,16 @@ class _OrdersScreenState extends State<OrdersScreen>
                   itemBuilder: (booking) => _ActiveOrderCard(
                     booking: booking,
                     onTap:
-                        booking.status.trim().toLowerCase() !=
-                            'arrived_at_laundry'
+                        booking.status.trim().toLowerCase() ==
+                                'looking_for_pickup_rider' ||
+                            booking.status.trim().toLowerCase() ==
+                                'pickup_rider_assigned'
                         ? () {
                             ScaffoldMessenger.of(context).clearSnackBars();
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'The laundry has not yet arrived.',
+                                  'A pickup rider has not completed pickup yet.',
                                 ),
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -185,7 +231,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                               ),
                             );
                           },
-
                     onChatTap: () {
                       Navigator.push(
                         context,
@@ -201,6 +246,55 @@ class _OrdersScreenState extends State<OrdersScreen>
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _TabLabelWithBadge extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isSelected;
+
+  const _TabLabelWithBadge({
+    required this.label,
+    required this.count,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeBg = isSelected
+        ? Colors.white.withOpacity(0.18)
+        : AppColors.primary.withOpacity(0.10);
+
+    final badgeTextColor = isSelected ? Colors.white : AppColors.primary;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 8),
+          Container(
+            constraints: const BoxConstraints(minWidth: 22),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: badgeBg,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$count',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: badgeTextColor,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -285,7 +379,7 @@ class _OrdersListView extends StatelessWidget {
 class _NewOrderCard extends StatefulWidget {
   final BookingModel booking;
   final Future<void> Function() onAccept;
-  final Future<void> Function() onReject;
+  final Future<void> Function(String reason, String note) onReject;
 
   const _NewOrderCard({
     required this.booking,
@@ -302,9 +396,29 @@ class _NewOrderCardState extends State<_NewOrderCard> {
   bool _isAccepting = false;
   bool _isRejecting = false;
 
+  Future<void> _handleReject() async {
+    final result = await showModalBottomSheet<_CancelOrderResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _CancelOrderSheet(),
+    );
+
+    if (result == null) return;
+
+    setState(() => _isRejecting = true);
+    try {
+      await widget.onReject(result.reason, result.note);
+    } finally {
+      if (mounted) {
+        setState(() => _isRejecting = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasCustomerNote = widget.booking.customerNote.trim().isNotEmpty;
+    final hasCustomerNote = widget.booking.customerNotes.trim().isNotEmpty;
 
     return Material(
       color: Colors.transparent,
@@ -400,7 +514,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        widget.booking.customerNote,
+                        widget.booking.customerNotes,
                         style: const TextStyle(
                           fontSize: 13.5,
                           height: 1.45,
@@ -419,16 +533,7 @@ class _NewOrderCardState extends State<_NewOrderCard> {
                     child: OutlinedButton(
                       onPressed: _isAccepting || _isRejecting
                           ? null
-                          : () async {
-                              setState(() => _isRejecting = true);
-                              try {
-                                await widget.onReject();
-                              } finally {
-                                if (mounted) {
-                                  setState(() => _isRejecting = false);
-                                }
-                              }
-                            },
+                          : _handleReject,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.redAccent,
                         side: const BorderSide(color: Colors.redAccent),
@@ -509,8 +614,15 @@ class _ActiveOrderCard extends StatelessWidget {
     required this.onChatTap,
   });
 
+  static const List<String> statuses = [
+    'arrived_at_laundry',
+    'processing',
+    'ready_for_dropoff',
+    'delivery_in_progress',
+  ];
+
   bool get _showChatButton =>
-      booking.status.trim().toLowerCase() == 'arrived_at_laundry';
+      statuses.contains(booking.status.trim().toLowerCase());
 
   @override
   Widget build(BuildContext context) {
@@ -559,13 +671,13 @@ class _ActiveOrderCard extends StatelessWidget {
               _InfoRow(
                 icon: Icons.location_on_outlined,
                 label: 'Dropoff',
-                value: booking.dropoffAddress,
+                value: booking.deliveryAddress,
               ),
               const SizedBox(height: 10),
               _InfoRow(
                 icon: Icons.payments_outlined,
                 label: 'Amount',
-                value: 'GHS ${booking.totalAmount.toStringAsFixed(2)}',
+                value: 'GHS ${booking.totalPrice}',
               ),
               if (_showChatButton) ...[
                 const SizedBox(height: 18),
@@ -612,32 +724,28 @@ class _OrderTopRow extends StatelessWidget {
   Color _statusColor(String value) {
     final normalized = value.trim().toLowerCase();
 
-    if (normalized == 'requested' ||
-        normalized == 'pending' ||
-        normalized == 'awaiting_laundry_acceptance') {
+    if (normalized == 'offered_to_laundry') {
       return const Color(0xFFF59E0B);
     }
 
-    if (normalized == 'looking_for_a_rider' ||
+    if (normalized == 'pending' ||
+        normalized == 'looking_for_pickup_rider' ||
         normalized == 'pickup_rider_assigned' ||
         normalized == 'pickup_started' ||
-        normalized == 'picked_up' ||
         normalized == 'arrived_at_laundry' ||
         normalized == 'processing' ||
         normalized == 'ready_for_dropoff' ||
-        normalized == 'delivery_rider_assigned' ||
-        normalized == 'delivery_started' ||
         normalized == 'delivery_in_progress') {
       return const Color(0xFF10B981);
     }
 
-    if (normalized == 'rejected' ||
-        normalized == 'laundry_rejected' ||
-        normalized == 'cancelled') {
+    if (normalized == 'rejected_by_laundry' ||
+        normalized == 'cancelled' ||
+        normalized == 'no_laundry_found') {
       return const Color(0xFFEF4444);
     }
 
-    if (normalized == 'delivered') {
+    if (normalized == 'completed') {
       return const Color(0xFF3B82F6);
     }
 
@@ -782,24 +890,250 @@ class _EmptyOrdersView extends StatelessWidget {
   }
 }
 
+class _CancelOrderResult {
+  final String reason;
+  final String note;
+
+  const _CancelOrderResult({required this.reason, required this.note});
+}
+
+class _CancelOrderSheet extends StatefulWidget {
+  const _CancelOrderSheet();
+
+  @override
+  State<_CancelOrderSheet> createState() => _CancelOrderSheetState();
+}
+
+class _CancelOrderSheetState extends State<_CancelOrderSheet> {
+  final TextEditingController _noteController = TextEditingController();
+
+  final List<String> _reasons = const [
+    'Laundry is closing soon',
+    'Laundry is fully booked',
+    'Pickup cannot be arranged',
+    'Service unavailable',
+    'Area is out of coverage',
+    'Other',
+  ];
+
+  String _selectedReason = 'Laundry is fully booked';
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(
+      _CancelOrderResult(
+        reason: _selectedReason,
+        note: _noteController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 24,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 46,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Reject order',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Select a reason and add a short note.',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: _reasons.map((reason) {
+                  final isSelected = reason == _selectedReason;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedReason = reason);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary.withOpacity(0.12)
+                            : const Color(0xFFF6F7FB),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : Colors.black.withOpacity(0.06),
+                        ),
+                      ),
+                      child: Text(
+                        reason,
+                        style: TextStyle(
+                          fontSize: 12.8,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _noteController,
+                maxLines: 4,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: 'Add an optional note...',
+                  filled: true,
+                  fillColor: const Color(0xFFF7F8FC),
+                  contentPadding: const EdgeInsets.all(16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide(
+                      color: Colors.black.withOpacity(0.05),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.black.withOpacity(0.08)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Back',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _submit,
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: Colors.redAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Confirm reject',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class OperatorOrdersService {
   OperatorOrdersService({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
 
+  static const List<String> _newStatuses = [
+    'offered_to_laundry',
+    'awaiting_laundry_acceptance',
+  ];
+
+  static const List<String> _activeStatuses = [
+    'pending',
+    'looking_for_pickup_rider',
+    'pickup_rider_assigned',
+    'pickup_started',
+    'arrived_at_laundry',
+    'processing',
+    'ready_for_dropoff',
+    'delivery_in_progress',
+    'completed',
+  ];
+
   Stream<List<BookingModel>> streamNewOrders(String laundryId) {
     return _firestore
         .collection('bookings')
         .where('laundryId', isEqualTo: laundryId)
-        .where(
-          'status',
-          whereIn: const [
-            'pending',
-            'requested',
-            'awaiting_laundry_acceptance',
-          ],
-        )
+        .where('status', whereIn: _newStatuses)
         .snapshots()
         .map((snapshot) {
           final bookings = snapshot.docs
@@ -822,21 +1156,7 @@ class OperatorOrdersService {
     return _firestore
         .collection('bookings')
         .where('laundryId', isEqualTo: laundryId)
-        .where(
-          'status',
-          whereIn: const [
-            'looking_for_a_rider',
-            'pickup_rider_assigned',
-            'pickup_started',
-            'picked_up',
-            'arrived_at_laundry',
-            'processing',
-            'ready_for_dropoff',
-            'delivery_rider_assigned',
-            'delivery_started',
-            'delivery_in_progress',
-          ],
-        )
+        .where('status', whereIn: _activeStatuses)
         .snapshots()
         .map((snapshot) {
           final bookings = snapshot.docs
@@ -855,25 +1175,119 @@ class OperatorOrdersService {
         });
   }
 
-  Future<void> acceptOrder(String bookingId) async {
-    await _firestore.collection('bookings').doc(bookingId).update({
-      'status': 'looking_for_a_rider',
-      'timeline.laundryAcceptedAt': FieldValue.serverTimestamp(),
+  Stream<Map<String, int>> streamOrderCounts(String laundryId) {
+    return FirebaseFirestore.instance
+        .collection('bookings')
+        .where('laundryId', isEqualTo: laundryId)
+        .snapshots()
+        .map((snapshot) {
+          int newCount = 0;
+          int activeCount = 0;
+
+          for (final doc in snapshot.docs) {
+            final status = (doc.data()['status'] ?? '').toString();
+
+            if (_newStatuses.contains(status)) {
+              newCount++;
+            } else if (_activeStatuses.contains(status)) {
+              activeCount++;
+            }
+          }
+
+          return {'new': newCount, 'active': activeCount};
+        });
+  }
+
+  Future<void> acceptOrder({
+    required String bookingId,
+    required AppUserModel? currentUser,
+  }) async {
+    if (currentUser == null) {
+      throw Exception('Current user is null.');
+    }
+
+    final laundryDoc = await _firestore
+        .collection('laundries')
+        .doc(currentUser.id)
+        .get();
+
+    final laundryData = laundryDoc.data() ?? <String, dynamic>{};
+    final profile = _asMap(laundryData['profile']);
+    final contact = _asMap(laundryData['contact']);
+    final location = _asMap(laundryData['location']);
+
+    final laundryName = _readString(profile['name']) ?? currentUser.fullName;
+    final laundryPhone =
+        _readString(contact['phoneNumber']) ?? currentUser.phoneNumber;
+    final laundryPhotoUrl = _readString(profile['photoUrl']) ?? '';
+    final laundryAddressLine = _readString(location['addressLine']) ?? '';
+
+    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+    await bookingRef.update({
+      'status': 'looking_for_pickup_rider',
       'updatedAt': FieldValue.serverTimestamp(),
-      'cancellation': null,
-      'notes.laundry': '',
+      'timeline.acceptedAt': FieldValue.serverTimestamp(),
+      'laundryAssignment.assignedAutomatically': true,
+      'laundryAssignment.assignedAt': FieldValue.serverTimestamp(),
+      'laundrySnapshot.laundryId': currentUser.id,
+      'laundrySnapshot.laundryName': laundryName,
+      'laundrySnapshot.laundryPhone': laundryPhone,
+      'laundrySnapshot.laundryPhotoUrl': laundryPhotoUrl,
+      'laundrySnapshot.addressLine': laundryAddressLine,
+    });
+
+    await bookingRef.collection('status_history').add({
+      'status': 'looking_for_pickup_rider',
+      'title': 'Laundry Accepted',
+      'description':
+          'The laundry accepted this booking and the system is now looking for a pickup rider.',
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
-  Future<void> rejectOrder(String bookingId) async {
-    await _firestore.collection('bookings').doc(bookingId).update({
-      'status': 'laundry_rejected',
+  Future<void> rejectOrder({
+    required String bookingId,
+    required String laundryId,
+    required String reason,
+    required String note,
+  }) async {
+    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+    await bookingRef.update({
+      'status': 'awaiting_laundry_assignment',
       'updatedAt': FieldValue.serverTimestamp(),
-      'cancellation': {
-        'cancelledBy': 'laundry',
-        'reason': 'Rejected by laundry operator.',
-      },
-      'timeline.cancelledAt': FieldValue.serverTimestamp(),
+      'rejectedLaundryIds': FieldValue.arrayUnion([laundryId]),
+      'laundryId': null,
+      'laundryName': null,
+      'laundryPhone': null,
+      'laundryPhotoUrl': null,
+      'laundryOffer.offeredLaundryId': null,
+      'laundryOffer.offeredAt': null,
+      'laundryOffer.offerExpiresAt': null,
     });
+
+    await bookingRef.collection('status_history').add({
+      'status': 'awaiting_laundry_assignment',
+      'title': 'Laundry Rejected',
+      'description': note.trim().isEmpty
+          ? 'Laundry rejected this booking because: $reason.'
+          : 'Laundry rejected this booking because: $reason. Note: $note',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return <String, dynamic>{};
+  }
+
+  String? _readString(dynamic value) {
+    if (value == null) return null;
+    final result = value.toString().trim();
+    return result.isEmpty ? null : result;
   }
 }

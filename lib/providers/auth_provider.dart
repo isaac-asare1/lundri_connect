@@ -220,7 +220,6 @@ class AuthProvider extends ChangeNotifier {
   }) {
     return {
       'uid': uid,
-      'ownerUid': uid,
       'fullName': fullName,
       'phoneNumber': '',
       'email': email,
@@ -272,35 +271,82 @@ class AuthProvider extends ChangeNotifier {
   }) {
     return {
       'id': uid,
-      'ownerUid': uid,
-      'name': laundryName,
-      'description': '',
-      'photoUrl': '',
-      'logoUrl': '',
-      'phoneNumber': '',
-      'email': email,
-      'addressLine': '',
-      'latitude': null,
-      'longitude': null,
-      'serviceRadiusKm': null,
-      'supportedServices': <String>[],
-      'basePricePerKg': null,
-      'washIronExtraPerKg': null,
-      'rating': 0.0,
-      'totalReviews': 0,
-      'estimatedTurnaroundText': '',
-      'availabilityStatus': 'closed',
-      'isOpenNow': false,
-      'acceptingOrders': false,
-      'isApproved': false,
-      'isFeatured': false,
-      'currentOrderCount': 0,
-      'maxConcurrentOrders': 0,
-      'openingHours': <String, dynamic>{},
-      'stats': {'totalOrders': 0, 'completedOrders': 0, 'cancelledOrders': 0},
       'role': 'laundry',
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
+
+      'profile': {
+        'name': laundryName,
+        'description': '',
+        'photoUrl': '',
+        'logoUrl': '',
+        'coverImageUrl': '',
+      },
+
+      'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
+
+      'location': {
+        'addressLine': '',
+        // Temporary dummy coordinates near Sowutuom for testing.
+        'latitude': 5.6396,
+        'longitude': -0.2525,
+        'digitalAddress': '',
+        'landmark': '',
+        'serviceRadiusKm': 20,
+      },
+
+      'business': {
+        // Must be true for the Cloud Function query.
+        'isApproved': true,
+        'isFeatured': false,
+        'isOnline': true,
+        'acceptingOrders': true,
+        'acceptingAutoAssignments': true,
+        'maxConcurrentOrders': 10,
+        'currentOrderCount': 0,
+        'estimatedTurnaroundText': 'Same day',
+      },
+
+      // The Cloud Function reads this at the root level.
+      'openingHours': {
+        'mon': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+        'tue': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+        'wed': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+        'thu': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+        'fri': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+        'sat': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+        'sun': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
+      },
+
+      'services': {'washFold': true, 'washIron': true},
+
+      // Leave empty for now so every booking passes the add-on check.
+      'supportedAddOns': <String>[],
+
+      'pricing': {
+        'currency': 'GHS',
+        'basePricePerKg': 18,
+        'washIronExtraPerKg': 2,
+        'pickupFee': 0,
+        'deliveryFee': 0,
+        'minimumOrderPrice': 0,
+        'pricingNotes': '',
+      },
+
+      'ratings': {'rating': 0.0, 'totalReviews': 0},
+
+      'stats': {'totalOrders': 0, 'completedOrders': 0, 'cancelledOrders': 0},
+
+      'owner': {'fullName': laundryName, 'phoneNumber': '', 'photoUrl': ''},
+
+      'chat': {
+        'lastSeenAt': null,
+        'fcmTokens': <String, bool>{},
+        'fcmUpdatedAt': null,
+      },
+
+      'timestamps': {
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
     };
   }
 }

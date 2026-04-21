@@ -30,9 +30,6 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
 
   Future<void> _refreshDashboard() async {
     await context.read<UserProvider>().loadCurrentUser();
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   bool _isRequestStatus(String status) {
@@ -42,6 +39,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
       'pending',
       'requested',
       'awaiting_laundry_acceptance',
+      'offered_to_laundry',
     };
 
     return requestStatuses.contains(normalized);
@@ -51,15 +49,19 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
     final normalized = status.trim().toLowerCase();
 
     const nonActiveStatuses = {
-      'pending',
-      'requested',
-      'awaiting_laundry_acceptance',
-      'laundry_rejected',
-      'delivered',
-      'cancelled',
+      'looking_for_pickup_rider',
+      'pickup_rider_assigned',
+      'pickup_started',
+      'picked_up',
+      'arrived_at_laundry',
+      'processing',
+      'ready_for_dropoff',
+      'delivery_rider_assigned',
+      'delivery_started',
+      'delivery_in_progress',
     };
 
-    return !nonActiveStatuses.contains(normalized);
+    return nonActiveStatuses.contains(normalized);
   }
 
   bool _isPendingPayment(String paymentStatus) {
@@ -69,25 +71,28 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userProvider = context.watch<UserProvider>();
-    final currentUser = userProvider.currentUser;
+    final isLoading = context.select<UserProvider, bool>(
+      (provider) => provider.isLoading,
+    );
 
-    final isLoading = userProvider.isLoading;
-    final operatorId = currentUser?.id ?? '';
-    final operatorName = currentUser?.fullName ?? 'Operator';
-    final businessName =
-        userProvider.businessInfo?.businessName ?? 'Lundri Business';
-    final pickupEnabled = userProvider.businessInfo?.pickupAvailable == true
-        ? 'Enabled'
-        : 'Off';
-    final isOnline = userProvider.isOnline;
+    final laundryId = context.select<UserProvider, String>(
+      (provider) => provider.currentUser?.id ?? '',
+    );
+
+    final operatorName = context.select<UserProvider, String>(
+      (provider) => provider.currentUser?.fullName ?? 'Operator',
+    );
+
+    final businessName = context.select<UserProvider, String>(
+      (provider) => provider.businessInfo?.businessName ?? 'Lundri Business',
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       body: SafeArea(
         child: isLoading
             ? const LoadingWidget(message: 'Loading dashboard...')
-            : operatorId.isEmpty
+            : laundryId.isEmpty
             ? const Center(
                 child: Text(
                   'Operator account not found.',
@@ -95,7 +100,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                 ),
               )
             : StreamBuilder<List<BookingModel>>(
-                stream: _bookingService.streamOperatorBookings(operatorId),
+                stream: _bookingService.streamOperatorBookings(laundryId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const LoadingWidget(message: 'Loading dashboard...');
@@ -145,46 +150,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                                   businessName: businessName,
                                 ),
                                 const SizedBox(height: 18),
-                                GoOnlineSliderCard(
-                                  isOnline: isOnline,
-                                  onCompleted: () async {
-                                    try {
-                                      await context
-                                          .read<UserProvider>()
-                                          .toggleOnlineStatus();
-
-                                      if (!mounted) return;
-
-                                      final updatedStatus = context
-                                          .read<UserProvider>()
-                                          .isOnline;
-
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            updatedStatus
-                                                ? 'You are now online.'
-                                                : 'You are now offline.',
-                                          ),
-                                        ),
-                                      );
-                                    } catch (_) {
-                                      if (!mounted) return;
-
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Failed to update online status.',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
+                                const _OnlineStatusSection(),
                                 const SizedBox(height: 20),
                                 const Text(
                                   'Overview',
@@ -222,11 +188,17 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                                       icon:
                                           Icons.account_balance_wallet_rounded,
                                     ),
-                                    _ModernStatCard(
-                                      title: 'Pickup',
-                                      value: pickupEnabled,
-                                      subtitle: 'Service availability',
-                                      icon: Icons.local_shipping_rounded,
+                                    Consumer<UserProvider>(
+                                      builder: (context, provider, child) {
+                                        return _ModernStatCard(
+                                          title: 'Pickup',
+                                          value: provider.isOnline
+                                              ? "Enabled"
+                                              : "Off",
+                                          subtitle: 'Service availability',
+                                          icon: Icons.local_shipping_rounded,
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
@@ -305,6 +277,44 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
   }
 }
 
+class _OnlineStatusSection extends StatelessWidget {
+  const _OnlineStatusSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final isOnline = context.select<UserProvider, bool>(
+      (provider) => provider.isOnline,
+    );
+
+    return GoOnlineSliderCard(
+      isOnline: isOnline,
+      onCompleted: () async {
+        try {
+          await context.read<UserProvider>().toggleOnlineStatus();
+
+          if (!context.mounted) return;
+
+          final updatedStatus = context.read<UserProvider>().isOnline;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                updatedStatus ? 'You are now online.' : 'You are now offline.',
+              ),
+            ),
+          );
+        } catch (_) {
+          if (!context.mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to update online status.')),
+          );
+        }
+      },
+    );
+  }
+}
+
 class GoOnlineSliderCard extends StatefulWidget {
   final bool isOnline;
   final Future<void> Function() onCompleted;
@@ -324,6 +334,15 @@ class _GoOnlineSliderCardState extends State<GoOnlineSliderCard> {
   bool _isSubmitting = false;
 
   @override
+  void didUpdateWidget(covariant GoOnlineSliderCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.isOnline != widget.isOnline && mounted) {
+      _dragDx = 0;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     const double cardHeight = 68;
     const double knobSize = 56;
@@ -337,85 +356,93 @@ class _GoOnlineSliderCardState extends State<GoOnlineSliderCard> {
         ? const Color(0xFF111827)
         : const Color(0xFF35C47C);
 
-    return Container(
-      height: cardHeight,
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: backgroundColor.withOpacity(0.24),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Center(
-            child: Text(
-              _isSubmitting ? 'Please wait...' : label,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+    return RepaintBoundary(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        height: cardHeight,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: backgroundColor.withOpacity(0.24),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: Text(
+                  _isSubmitting ? 'Please wait...' : label,
+                  key: ValueKey('${_isSubmitting}_$label'),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
-          ),
-          Positioned(
-            left: 6 + _dragDx,
-            child: GestureDetector(
-              onHorizontalDragUpdate: _isSubmitting
-                  ? null
-                  : (details) {
-                      setState(() {
-                        _dragDx = (_dragDx + details.delta.dx).clamp(
-                          0,
-                          maxDrag,
-                        );
-                      });
-                    },
-              onHorizontalDragEnd: _isSubmitting
-                  ? null
-                  : (_) async {
-                      final bool shouldComplete = _dragDx > maxDrag * 0.72;
+            Positioned(
+              left: 6 + _dragDx,
+              child: GestureDetector(
+                onHorizontalDragUpdate: _isSubmitting
+                    ? null
+                    : (details) {
+                        setState(() {
+                          _dragDx = (_dragDx + details.delta.dx).clamp(
+                            0,
+                            maxDrag,
+                          );
+                        });
+                      },
+                onHorizontalDragEnd: _isSubmitting
+                    ? null
+                    : (_) async {
+                        final bool shouldComplete = _dragDx > maxDrag * 0.72;
 
-                      if (!shouldComplete) {
-                        setState(() => _dragDx = 0);
-                        return;
-                      }
-
-                      setState(() => _isSubmitting = true);
-
-                      try {
-                        await widget.onCompleted();
-                      } finally {
-                        if (mounted) {
-                          setState(() {
-                            _dragDx = 0;
-                            _isSubmitting = false;
-                          });
+                        if (!shouldComplete) {
+                          setState(() => _dragDx = 0);
+                          return;
                         }
-                      }
-                    },
-              child: Container(
-                width: knobSize,
-                height: knobSize,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.18)),
-                ),
-                child: const Icon(
-                  Icons.double_arrow,
-                  color: Colors.white,
-                  size: 20,
+
+                        setState(() => _isSubmitting = true);
+
+                        try {
+                          await widget.onCompleted();
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _dragDx = 0;
+                              _isSubmitting = false;
+                            });
+                          }
+                        }
+                      },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: knobSize,
+                  height: knobSize,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                  ),
+                  child: const Icon(
+                    Icons.double_arrow,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -651,14 +678,14 @@ class BookingService {
 
   static const String _bookingsCollection = 'bookings';
 
-  Stream<List<BookingModel>> streamOperatorBookings(String operatorId) {
-    if (operatorId.trim().isEmpty) {
+  Stream<List<BookingModel>> streamOperatorBookings(String laundryId) {
+    if (laundryId.trim().isEmpty) {
       return Stream.value(<BookingModel>[]);
     }
 
     return _firestore
         .collection(_bookingsCollection)
-        .where('laundryId', isEqualTo: operatorId)
+        .where('laundrySnapshot.laundryId', isEqualTo: laundryId)
         .snapshots()
         .map((snapshot) {
           final bookings = snapshot.docs

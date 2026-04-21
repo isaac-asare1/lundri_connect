@@ -47,7 +47,7 @@ class UserProvider extends ChangeNotifier {
         return;
       }
 
-      final doc = await _firestore
+      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
           .collection(_laundriesCollection)
           .doc(firebaseUser.uid)
           .get();
@@ -58,9 +58,10 @@ class UserProvider extends ChangeNotifier {
           fullName: firebaseUser.displayName ?? '',
           email: firebaseUser.email ?? '',
           phoneNumber: firebaseUser.phoneNumber ?? '',
-          role: 'operator',
+          role: 'laundry',
           createdAt: DateTime.now(),
-          isAvailable: false,
+          isOnline: false,
+          addressLine: '',
         );
 
         _businessInfo = null;
@@ -69,50 +70,51 @@ class UserProvider extends ChangeNotifier {
         return;
       }
 
-      final data = doc.data() ?? <String, dynamic>{};
+      final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
 
-      _isOnline = data['isOnline'] == true;
+      final Map<String, dynamic> profile = _asMap(data['profile']);
+      final Map<String, dynamic> contact = _asMap(data['contact']);
+      final Map<String, dynamic> location = _asMap(data['location']);
+      final Map<String, dynamic> business = _asMap(data['business']);
+      final Map<String, dynamic> owner = _asMap(data['owner']);
+      final Map<String, dynamic> timestamps = _asMap(data['timestamps']);
+
+      _isOnline = business['isOnline'] == true;
 
       _currentUser = AppUserModel(
         id: firebaseUser.uid,
         fullName:
-            _readString(data['fullName']) ??
-            _readString(data['ownerName']) ??
+            _readString(owner['fullName']) ??
+            _readString(profile['name']) ??
             firebaseUser.displayName ??
             '',
-        email:
-            _readString(data['email']) ??
-            _readString(data['businessEmail']) ??
-            firebaseUser.email ??
-            '',
+        email: _readString(contact['email']) ?? firebaseUser.email ?? '',
         phoneNumber:
-            _readString(data['phoneNumber']) ??
-            _readString(data['businessPhoneNumber']) ??
+            _readString(contact['phoneNumber']) ??
+            _readString(owner['phoneNumber']) ??
             firebaseUser.phoneNumber ??
             '',
-        role: _readString(data['role']) ?? 'operator',
-        createdAt: _parseDateTime(data['createdAt']) ?? DateTime.now(),
-        isAvailable: data['isAvailable'] == true,
+        role: _readString(data['role']) ?? 'laundry',
+        createdAt:
+            _parseDateTime(timestamps['createdAt']) ??
+            _parseDateTime(data['createdAt']) ??
+            DateTime.now(),
+        isOnline: _isOnline,
+        addressLine: _readString(location['addressLine']) ?? '',
       );
 
       _businessInfo = BusinessInfoModel(
-        businessName: _readString(data['businessName']) ?? '',
-        ownerName:
-            _readString(data['ownerName']) ??
-            _readString(data['fullName']) ??
-            '',
+        businessName: _readString(profile['name']) ?? '',
+        ownerName: _readString(owner['fullName']) ?? '',
         phoneNumber:
-            _readString(data['businessPhoneNumber']) ??
-            _readString(data['phoneNumber']) ??
+            _readString(contact['phoneNumber']) ??
+            _readString(owner['phoneNumber']) ??
             '',
-        email:
-            _readString(data['businessEmail']) ??
-            _readString(data['email']) ??
-            '',
-        address: _readString(data['address']) ?? '',
-        description: _readString(data['description']) ?? '',
-        pickupAvailable: data['pickupAvailable'] == true,
-        deliveryAvailable: data['deliveryAvailable'] == true,
+        email: _readString(contact['email']) ?? '',
+        address: _readString(location['addressLine']) ?? '',
+        description: _readString(profile['description']) ?? '',
+        pickupAvailable: false,
+        deliveryAvailable: true,
       );
     } catch (e) {
       _currentUser = null;
@@ -124,7 +126,7 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateAvailability(bool isAvailable) async {
+  Future<void> updateAvailability(bool isOnline) async {
     if (_currentUser == null) return;
 
     _errorMessage = null;
@@ -134,11 +136,12 @@ class UserProvider extends ChangeNotifier {
           .collection(_laundriesCollection)
           .doc(_currentUser!.id)
           .update({
-            'isAvailable': isAvailable,
-            'updatedAt': FieldValue.serverTimestamp(),
+            'business.isOnline': isOnline,
+            'timestamps.updatedAt': FieldValue.serverTimestamp(),
           });
 
-      _currentUser = _currentUser!.copyWith(isAvailable: isAvailable);
+      _isOnline = isOnline;
+      _currentUser = _currentUser!.copyWith(isOnline: isOnline);
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to update availability: $e';
@@ -156,11 +159,12 @@ class UserProvider extends ChangeNotifier {
           .collection(_laundriesCollection)
           .doc(_currentUser!.id)
           .update({
-            'isOnline': isOnline,
-            'updatedAt': FieldValue.serverTimestamp(),
+            'business.isOnline': isOnline,
+            'timestamps.updatedAt': FieldValue.serverTimestamp(),
           });
 
       _isOnline = isOnline;
+      _currentUser = _currentUser!.copyWith(isOnline: isOnline);
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to update online status: $e';
@@ -183,18 +187,26 @@ class UserProvider extends ChangeNotifier {
           .collection(_laundriesCollection)
           .doc(_currentUser!.id)
           .update({
-            'businessName': businessInfo.businessName,
-            'ownerName': businessInfo.ownerName,
-            'businessPhoneNumber': businessInfo.phoneNumber,
-            'businessEmail': businessInfo.email,
-            'address': businessInfo.address,
-            'description': businessInfo.description,
-            'pickupAvailable': businessInfo.pickupAvailable,
-            'deliveryAvailable': businessInfo.deliveryAvailable,
-            'updatedAt': FieldValue.serverTimestamp(),
+            'profile.name': businessInfo.businessName.trim(),
+            'profile.description': businessInfo.description.trim(),
+            'contact.phoneNumber': businessInfo.phoneNumber.trim(),
+            'contact.email': businessInfo.email.trim(),
+            'location.addressLine': businessInfo.address.trim(),
+            'owner.fullName': businessInfo.ownerName.trim(),
+            'owner.phoneNumber': businessInfo.phoneNumber.trim(),
+            'timestamps.updatedAt': FieldValue.serverTimestamp(),
           });
 
       _businessInfo = businessInfo;
+
+      _currentUser = _currentUser!.copyWith(
+        fullName: businessInfo.ownerName.trim().isEmpty
+            ? businessInfo.businessName.trim()
+            : businessInfo.ownerName.trim(),
+        email: businessInfo.email.trim(),
+        phoneNumber: businessInfo.phoneNumber.trim(),
+      );
+
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to update business info: $e';
@@ -202,8 +214,185 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateLaundryProfile({
+    required String laundryName,
+    required String description,
+    required String phoneNumber,
+    required String email,
+    required String addressLine,
+    required String ownerName,
+    String? ownerPhoneNumber,
+    String? photoUrl,
+    String? logoUrl,
+    String? coverImageUrl,
+    String? whatsappNumber,
+    String? digitalAddress,
+    String? landmark,
+    double? latitude,
+    double? longitude,
+    int? serviceRadiusKm,
+  }) async {
+    if (_currentUser == null) return;
+
+    _errorMessage = null;
+
+    try {
+      await _firestore
+          .collection(_laundriesCollection)
+          .doc(_currentUser!.id)
+          .update({
+            'profile.name': laundryName.trim(),
+            'profile.description': description.trim(),
+            'profile.photoUrl': (photoUrl ?? '').trim(),
+            'profile.logoUrl': (logoUrl ?? '').trim(),
+            'profile.coverImageUrl': (coverImageUrl ?? '').trim(),
+            'contact.phoneNumber': phoneNumber.trim(),
+            'contact.email': email.trim(),
+            'contact.whatsappNumber': (whatsappNumber ?? '').trim(),
+            'location.addressLine': addressLine.trim(),
+            'location.digitalAddress': (digitalAddress ?? '').trim(),
+            'location.landmark': (landmark ?? '').trim(),
+            'location.latitude': latitude,
+            'location.longitude': longitude,
+            'location.serviceRadiusKm': serviceRadiusKm ?? 10,
+            'owner.fullName': ownerName.trim(),
+            'owner.phoneNumber': (ownerPhoneNumber ?? phoneNumber).trim(),
+            'timestamps.updatedAt': FieldValue.serverTimestamp(),
+          });
+
+      _businessInfo = BusinessInfoModel(
+        businessName: laundryName.trim(),
+        ownerName: ownerName.trim(),
+        phoneNumber: phoneNumber.trim(),
+        email: email.trim(),
+        address: addressLine.trim(),
+        description: description.trim(),
+        pickupAvailable: true,
+        deliveryAvailable: true,
+      );
+
+      _currentUser = _currentUser!.copyWith(
+        fullName: ownerName.trim().isEmpty
+            ? laundryName.trim()
+            : ownerName.trim(),
+        email: email.trim(),
+        phoneNumber: phoneNumber.trim(),
+        addressLine: addressLine.trim(),
+      );
+
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to update laundry profile: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> updatePricing({
+    num? basePricePerKg,
+    num? washIronExtraPerKg,
+    num? pickupFee,
+    num? deliveryFee,
+    num? minimumOrderPrice,
+    String? pricingNotes,
+  }) async {
+    if (_currentUser == null) return;
+
+    _errorMessage = null;
+
+    try {
+      final Map<String, dynamic> updates = {
+        'timestamps.updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (basePricePerKg != null) {
+        updates['pricing.basePricePerKg'] = basePricePerKg;
+      }
+      if (washIronExtraPerKg != null) {
+        updates['pricing.washIronExtraPerKg'] = washIronExtraPerKg;
+      }
+      if (pickupFee != null) {
+        updates['pricing.pickupFee'] = pickupFee;
+      }
+      if (deliveryFee != null) {
+        updates['pricing.deliveryFee'] = deliveryFee;
+      }
+      if (minimumOrderPrice != null) {
+        updates['pricing.minimumOrderPrice'] = minimumOrderPrice;
+      }
+      if (pricingNotes != null) {
+        updates['pricing.pricingNotes'] = pricingNotes.trim();
+      }
+
+      await _firestore
+          .collection(_laundriesCollection)
+          .doc(_currentUser!.id)
+          .update(updates);
+
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to update pricing: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateBusinessSettings({
+    bool? isApproved,
+    bool? isFeatured,
+    bool? isOnline,
+    int? maxConcurrentOrders,
+    int? currentOrderCount,
+    String? estimatedTurnaroundText,
+    Map<String, dynamic>? openingHours,
+  }) async {
+    if (_currentUser == null) return;
+
+    _errorMessage = null;
+
+    try {
+      final Map<String, dynamic> updates = {
+        'timestamps.updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (isApproved != null) {
+        updates['business.isApproved'] = isApproved;
+      }
+      if (isFeatured != null) {
+        updates['business.isFeatured'] = isFeatured;
+      }
+      if (isOnline != null) {
+        updates['business.isOnline'] = isOnline;
+        _isOnline = isOnline;
+        _currentUser = _currentUser!.copyWith(isOnline: isOnline);
+      }
+      if (maxConcurrentOrders != null) {
+        updates['business.maxConcurrentOrders'] = maxConcurrentOrders;
+      }
+      if (currentOrderCount != null) {
+        updates['business.currentOrderCount'] = currentOrderCount;
+      }
+      if (estimatedTurnaroundText != null) {
+        updates['business.estimatedTurnaroundText'] = estimatedTurnaroundText
+            .trim();
+      }
+      if (openingHours != null) {
+        updates['business.openingHours'] = openingHours;
+      }
+
+      await _firestore
+          .collection(_laundriesCollection)
+          .doc(_currentUser!.id)
+          .update(updates);
+
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to update business settings: $e';
+      notifyListeners();
+    }
+  }
+
   void setCurrentUser(AppUserModel user) {
     _currentUser = user;
+    _isOnline = user.isOnline;
     notifyListeners();
   }
 
@@ -215,9 +404,17 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return <String, dynamic>{};
+  }
+
   String? _readString(dynamic value) {
     if (value == null) return null;
-    final result = value.toString().trim();
+    final String result = value.toString().trim();
     return result.isEmpty ? null : result;
   }
 

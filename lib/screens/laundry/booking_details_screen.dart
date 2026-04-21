@@ -22,9 +22,17 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
   static const double _pricePerKg = 10.0;
 
+  late String _currentStatus;
+  late double _currentTotalAmount;
+  late double _currentWeight;
+
   @override
   void initState() {
     super.initState();
+    _currentStatus = widget.booking.status;
+    _currentTotalAmount = widget.booking.totalPrice.toDouble();
+    _currentWeight = widget.booking.estimatedWeightKg.toDouble();
+
     if (widget.booking.estimatedWeightKg > 0) {
       _weightController.text = widget.booking.estimatedWeightKg.toString();
     }
@@ -44,6 +52,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return _enteredWeight * _pricePerKg;
   }
 
+  List<String> get _selectedAddOns {
+    return widget.booking.selectedAddOns
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
+  }
+
   Future<void> _saveWeight() async {
     final weight = _enteredWeight;
 
@@ -60,18 +74,38 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     setState(() => _isSavingWeight = true);
 
     try {
+      final booking = widget.booking;
+
+      final unitBasePrice = booking.estimatedWeightKg > 0
+          ? booking.basePrice / booking.estimatedWeightKg
+          : 0;
+
+      final recalculatedBasePrice = (weight * unitBasePrice).round();
+      final totalPrice =
+          recalculatedBasePrice +
+          booking.addOnsPrice +
+          booking.pickupFee +
+          booking.deliveryFee;
+
       await _service.updateWeightAndPrice(
-        bookingId: widget.booking.id,
-        weightKg: weight,
-        totalAmount: _calculatedPrice,
+        bookingId: booking.id,
+        actualWeightKg: weight,
+        recalculatedBasePrice: recalculatedBasePrice,
+        totalPrice: totalPrice,
       );
 
       if (!mounted) return;
 
+      setState(() {
+        _currentWeight = weight;
+        _currentTotalAmount = totalPrice.toDouble();
+        _currentStatus = 'processing';
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Weight saved. Total updated to GHS ${_calculatedPrice.toStringAsFixed(2)}.',
+            'Weight updated. New total is GHS ${totalPrice.toStringAsFixed(2)}',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -151,7 +185,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           children: [
             _HeroBookingCard(
               booking: booking,
-              calculatedPrice: _calculatedPrice,
+              status: _currentStatus,
+              totalAmount: _currentTotalAmount,
             ),
             const SizedBox(height: 16),
 
@@ -176,13 +211,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                   _ModernInfoTile(
                     icon: Icons.badge_outlined,
                     label: 'Pickup Contact',
-                    value: booking.pickupContactName,
+                    value: booking.customerName,
                   ),
                   const SizedBox(height: 12),
                   _ModernInfoTile(
                     icon: Icons.call_outlined,
                     label: 'Pickup Phone',
-                    value: booking.pickupContactPhone,
+                    value: booking.customerPhone,
                   ),
                 ],
               ),
@@ -208,7 +243,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       Expanded(
                         child: _StatMiniCard(
                           title: 'Weight Range',
-                          value: booking.weightRange,
+                          value: '${booking.estimatedWeightKg} kg',
                           icon: Icons.scale_outlined,
                         ),
                       ),
@@ -219,16 +254,20 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     children: [
                       Expanded(
                         child: _StatMiniCard(
-                          title: 'Pickup Date',
-                          value: booking.pickupDate,
+                          title: 'Requested Date',
+                          value: booking.requestedAt != null
+                              ? '${booking.requestedAt!.day.toString().padLeft(2, '0')}/${booking.requestedAt!.month.toString().padLeft(2, '0')}/${booking.requestedAt!.year}'
+                              : '—',
                           icon: Icons.calendar_month_outlined,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: _StatMiniCard(
-                          title: 'Pickup Time',
-                          value: booking.pickupTimeSlot,
+                          title: 'Requested Time',
+                          value: booking.requestedAt != null
+                              ? '${booking.requestedAt!.hour.toString().padLeft(2, '0')}:${booking.requestedAt!.minute.toString().padLeft(2, '0')}'
+                              : '—',
                           icon: Icons.access_time_rounded,
                         ),
                       ),
@@ -241,7 +280,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                         child: _StatMiniCard(
                           title: 'Current Amount',
                           value:
-                              'GHS ${booking.totalAmount.toStringAsFixed(2)}',
+                              'GHS ${_currentTotalAmount.toStringAsFixed(2)}',
                           icon: Icons.payments_outlined,
                         ),
                       ),
@@ -255,9 +294,47 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatMiniCard(
+                          title: 'Actual Weight',
+                          value: _currentWeight > 0
+                              ? '${_currentWeight.toStringAsFixed(1)} kg'
+                              : '—',
+                          icon: Icons.monitor_weight_outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _StatMiniCard(
+                          title: 'Booking Status',
+                          value: _currentStatus,
+                          icon: Icons.sync_alt_rounded,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
+
+            if (_selectedAddOns.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: 'Selected Add-Ons',
+                icon: Icons.auto_awesome_outlined,
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _selectedAddOns
+                      .map((addOn) => _AddOnChip(label: addOn))
+                      .toList(),
+                ),
+              ),
+            ],
+
             const SizedBox(height: 16),
 
             _SectionCard(
@@ -273,14 +350,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                   const SizedBox(height: 12),
                   _AddressTile(
                     title: 'Dropoff Address',
-                    address: booking.dropoffAddress,
+                    address: booking.deliveryAddress,
                     icon: Icons.download_outlined,
                   ),
                 ],
               ),
             ),
 
-            if (booking.customerNote.trim().isNotEmpty) ...[
+            if (booking.customerNotes.trim().isNotEmpty) ...[
               const SizedBox(height: 16),
               _SectionCard(
                 title: 'Customer Note',
@@ -296,7 +373,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     ),
                   ),
                   child: Text(
-                    booking.customerNote,
+                    booking.customerNotes,
                     style: const TextStyle(
                       fontSize: 14,
                       height: 1.6,
@@ -425,7 +502,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       child: _isSavingWeight
@@ -434,13 +511,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.2,
+                                color: Colors.white,
                               ),
                             )
                           : const Text(
                               'Save Weight & Update Price',
                               style: TextStyle(
                                 fontSize: 15,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                     ),
@@ -454,13 +532,15 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {},
-                // onPressed: _isCompletingBooking ? null : _completeBooking,
+                onPressed: _isCompletingBooking ? null : _completeBooking,
                 icon: _isCompletingBooking
                     ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Icon(Icons.check_circle_outline_rounded),
                 label: const Text(
@@ -490,32 +570,57 @@ class BookingDetailsService {
 
   Future<void> updateWeightAndPrice({
     required String bookingId,
-    required double weightKg,
-    required double totalAmount,
+    required double actualWeightKg,
+    required int recalculatedBasePrice,
+    required int totalPrice,
   }) async {
-    await _firestore.collection('bookings').doc(bookingId).update({
-      'estimatedWeightKg': weightKg,
-      'totalAmount': totalAmount,
+    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+    await bookingRef.update({
+      'items.0.actualWeightKg': actualWeightKg,
+      'pricing.basePrice': recalculatedBasePrice,
+      'pricing.totalPrice': totalPrice,
+      'status': 'processing',
+      'timeline.washingStartedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await bookingRef.collection('status_history').add({
+      'status': 'processing',
+      'title': 'Laundry Processing Started',
+      'description':
+          'The laundry weighed the clothes and started processing the order.',
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
   Future<void> completeBooking(String bookingId) async {
-    await _firestore.collection('bookings').doc(bookingId).update({
+    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+    await bookingRef.update({
       'status': 'completed',
-      'completedAt': FieldValue.serverTimestamp(),
+      'timeline.deliveredAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await bookingRef.collection('status_history').add({
+      'status': 'completed',
+      'title': 'Booking Completed',
+      'description': 'The booking has been marked as completed.',
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
 }
 
 class _HeroBookingCard extends StatelessWidget {
   final BookingModel booking;
-  final double calculatedPrice;
+  final String status;
+  final double totalAmount;
 
   const _HeroBookingCard({
     required this.booking,
-    required this.calculatedPrice,
+    required this.status,
+    required this.totalAmount,
   });
 
   String _cleanText(String value, {String fallback = '—'}) {
@@ -557,7 +662,7 @@ class _HeroBookingCard extends StatelessWidget {
                   ),
                 ),
               ),
-              _HeaderStatusChip(status: booking.status),
+              _HeaderStatusChip(status: status),
             ],
           ),
           const SizedBox(height: 8),
@@ -573,7 +678,6 @@ class _HeroBookingCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-
           Container(
             width: MediaQuery.of(context).size.width * 0.85,
             padding: const EdgeInsets.all(14),
@@ -599,9 +703,9 @@ class _HeroBookingCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Amount to pay',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.4,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
@@ -609,7 +713,7 @@ class _HeroBookingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'GHS ${booking.totalAmount.toStringAsFixed(2)}',
+                  'GHS ${totalAmount.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -668,7 +772,7 @@ class _SectionCard extends StatelessWidget {
                       ),
                       child: Icon(icon, color: AppColors.primary, size: 22),
                     )
-                  : SizedBox.shrink(),
+                  : const SizedBox.shrink(),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -877,6 +981,39 @@ class _AddressTile extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddOnChip extends StatelessWidget {
+  final String label;
+
+  const _AddOnChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.primary.withOpacity(0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_rounded, size: 16, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13.2,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
             ),
           ),
         ],

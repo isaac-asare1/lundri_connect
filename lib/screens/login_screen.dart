@@ -6,11 +6,6 @@ import '../core/routes/route_names.dart';
 import '../core/utils/helpers.dart';
 import '../core/utils/validators.dart';
 import '../providers/auth_provider.dart';
-import '../providers/navigation_provider.dart';
-import '../providers/orders_provider.dart';
-import '../providers/payments_provider.dart';
-import '../providers/rider_provider.dart';
-import '../providers/user_provider.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 
@@ -61,11 +56,6 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return;
     }
-
-    await context.read<OrdersProvider>().loadDemoData();
-    await context.read<PaymentsProvider>().loadDemoPayments();
-    await context.read<RiderProvider>().loadDemoRiderRequests();
-    context.read<NavigationProvider>().reset();
 
     if (!mounted) return;
 

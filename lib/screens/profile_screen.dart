@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:lundri_connect/core/utils/helpers.dart';
-import 'package:lundri_connect/providers/navigation_provider.dart';
-import 'package:lundri_connect/providers/orders_provider.dart';
-import 'package:lundri_connect/providers/payments_provider.dart';
-import 'package:lundri_connect/providers/rider_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants/app_colors.dart';

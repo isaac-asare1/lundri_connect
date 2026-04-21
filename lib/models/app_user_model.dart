@@ -1,3 +1,75 @@
+// class AppUserModel {
+//   final String id;
+//   final String fullName;
+//   final String email;
+//   final String phoneNumber;
+//   final String role;
+//   final String? profileImageUrl;
+//   final bool isOnline;
+//   final DateTime createdAt;
+
+//   const AppUserModel({
+//     required this.id,
+//     required this.fullName,
+//     required this.email,
+//     required this.phoneNumber,
+//     required this.role,
+//     this.profileImageUrl,
+//     this.isOnline = false,
+//     required this.createdAt,
+//   });
+
+//   AppUserModel copyWith({
+//     String? id,
+//     String? fullName,
+//     String? email,
+//     String? phoneNumber,
+//     String? role,
+//     String? profileImageUrl,
+//     bool? isOnline,
+//     DateTime? createdAt,
+//   }) {
+//     return AppUserModel(
+//       id: id ?? this.id,
+//       fullName: fullName ?? this.fullName,
+//       email: email ?? this.email,
+//       phoneNumber: phoneNumber ?? this.phoneNumber,
+//       role: role ?? this.role,
+//       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+//       isOnline: isOnline ?? this.isOnline,
+//       createdAt: createdAt ?? this.createdAt,
+//     );
+//   }
+
+//   Map<String, dynamic> toMap() {
+//     return {
+//       'id': id,
+//       'fullName': fullName,
+//       'email': email,
+//       'phoneNumber': phoneNumber,
+//       'role': role,
+//       'profileImageUrl': profileImageUrl,
+//       'isOnline': isOnline,
+//       'createdAt': createdAt.toIso8601String(),
+//     };
+//   }
+
+//   factory AppUserModel.fromMap(Map<String, dynamic> map) {
+//     return AppUserModel(
+//       id: map['id'] as String? ?? '',
+//       fullName: map['fullName'] as String? ?? '',
+//       email: map['email'] as String? ?? '',
+//       phoneNumber: map['phoneNumber'] as String? ?? '',
+//       role: map['role'] as String? ?? '',
+//       profileImageUrl: map['profileImageUrl'] as String?,
+//       isOnline: map['isOnline'] as bool? ?? true,
+//       createdAt:
+//           DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+//           DateTime.now(),
+//     );
+//   }
+// }
+
 class AppUserModel {
   final String id;
   final String fullName;
@@ -5,7 +77,8 @@ class AppUserModel {
   final String phoneNumber;
   final String role;
   final String? profileImageUrl;
-  final bool isAvailable;
+  final String? addressLine;
+  final bool isOnline;
   final DateTime createdAt;
 
   const AppUserModel({
@@ -15,7 +88,8 @@ class AppUserModel {
     required this.phoneNumber,
     required this.role,
     this.profileImageUrl,
-    this.isAvailable = true,
+    this.addressLine,
+    this.isOnline = false,
     required this.createdAt,
   });
 
@@ -26,7 +100,8 @@ class AppUserModel {
     String? phoneNumber,
     String? role,
     String? profileImageUrl,
-    bool? isAvailable,
+    String? addressLine,
+    bool? isOnline,
     DateTime? createdAt,
   }) {
     return AppUserModel(
@@ -36,7 +111,8 @@ class AppUserModel {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       role: role ?? this.role,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
-      isAvailable: isAvailable ?? this.isAvailable,
+      addressLine: addressLine ?? this.addressLine,
+      isOnline: isOnline ?? this.isOnline,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -49,7 +125,8 @@ class AppUserModel {
       'phoneNumber': phoneNumber,
       'role': role,
       'profileImageUrl': profileImageUrl,
-      'isAvailable': isAvailable,
+      'addressLine': addressLine,
+      'isOnline': isOnline,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -62,7 +139,8 @@ class AppUserModel {
       phoneNumber: map['phoneNumber'] as String? ?? '',
       role: map['role'] as String? ?? '',
       profileImageUrl: map['profileImageUrl'] as String?,
-      isAvailable: map['isAvailable'] as bool? ?? true,
+      addressLine: map['addressLine'] as String?,
+      isOnline: map['isOnline'] as bool? ?? false,
       createdAt:
           DateTime.tryParse(map['createdAt'] as String? ?? '') ??
           DateTime.now(),
