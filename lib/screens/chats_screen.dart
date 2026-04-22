@@ -14,28 +14,38 @@ import 'package:video_player/video_player.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/booking_model.dart';
 
-enum LaundryChatMessageType { text, image, video, system }
+enum ChatMessageType { text, image, video, system }
 
-class LaundryChatScreen extends StatefulWidget {
+enum ChatActorRole { customer, laundry, rider }
+
+enum RiderLegRole { pickupRider, deliveryRider }
+
+class ChatScreen extends StatefulWidget {
   final BookingModel booking;
   final String currentUserRole;
+  final String otherParticipantRole;
+  final String? otherParticipantId;
 
-  const LaundryChatScreen({
+  const ChatScreen({
     super.key,
     required this.booking,
     required this.currentUserRole,
+    required this.otherParticipantRole,
+    this.otherParticipantId,
   });
 
   @override
-  State<LaundryChatScreen> createState() => _LaundryChatScreenState();
+  State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _LaundryChatScreenState extends State<LaundryChatScreen> {
+class _ChatScreenState extends State<ChatScreen> {
   static const double _maxImageSizeMb = 10;
   static const double _maxVideoSizeMb = 50;
   static const int _maxVideoDurationSeconds = 30;
 
-  final LaundryChatService _chatService = LaundryChatService();
+  late final ChatContext _chatContext;
+  late final ChatService _chatService;
+
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -50,46 +60,12 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
   bool _isDeletingMessages = false;
 
   String? _lastBottomMessageId;
-  StreamSubscription<List<LaundryChatMessage>>? _messageSub;
+  StreamSubscription<List<ChatMessage>>? _messageSub;
 
   final Set<String> _selectedMessageIds = <String>{};
 
   String get _currentUserId => FirebaseAuth.instance.currentUser!.uid;
-
-  bool get _isLaundry =>
-      widget.currentUserRole.trim().toLowerCase() == 'laundry';
-
-  String get _senderRole => _isLaundry ? 'laundry' : 'customer';
-  String get _receiverRole => _isLaundry ? 'customer' : 'laundry';
   String get _bookingId => widget.booking.id;
-
-  String get senderId =>
-      _isLaundry ? (widget.booking.laundryId ?? '') : widget.booking.customerId;
-
-  String get _receiverId =>
-      _isLaundry ? widget.booking.customerId : (widget.booking.laundryId ?? '');
-
-  String get _senderName {
-    if (_isLaundry) {
-      final laundryName = widget.booking.laundryName ?? '';
-      return laundryName.trim().isEmpty ? 'Laundry' : laundryName;
-    }
-
-    return widget.booking.customerName.trim().isEmpty
-        ? 'Customer'
-        : widget.booking.customerName;
-  }
-
-  String get _chatTitle {
-    if (_isLaundry) {
-      return widget.booking.customerName.trim().isEmpty
-          ? 'Customer'
-          : widget.booking.customerName;
-    }
-
-    final laundryName = widget.booking.laundryName ?? '';
-    return laundryName.trim().isEmpty ? 'Laundry' : laundryName;
-  }
 
   bool get _canSend {
     return !_isSending &&
@@ -102,6 +78,16 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
   void initState() {
     super.initState();
 
+    _chatContext = ChatContextResolver.resolve(
+      booking: widget.booking,
+      currentUserId: _currentUserId,
+      currentUserRole: widget.currentUserRole,
+      otherParticipantRole: widget.otherParticipantRole,
+      otherParticipantId: widget.otherParticipantId,
+    );
+
+    _chatService = ChatService(chatContext: _chatContext);
+
     _messageController.addListener(_handleComposerChanged);
 
     _scrollController.addListener(() {
@@ -112,7 +98,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
       _isNearBottom = distanceFromBottom < 120;
     });
 
-    _messageSub = _chatService.streamMessages(_bookingId).listen((messages) {
+    _messageSub = _chatService.streamMessages().listen((messages) {
       if (!mounted) return;
 
       if (!_didInitialScroll && messages.isNotEmpty) {
@@ -205,9 +191,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
     );
   }
 
-  Future<void> _markIncomingMessagesAsRead(
-    List<LaundryChatMessage> messages,
-  ) async {
+  Future<void> _markIncomingMessagesAsRead(List<ChatMessage> messages) async {
     final unreadIncoming = messages
         .where((m) => m.senderId != _currentUserId && !m.isRead)
         .map((m) => m.id)
@@ -216,11 +200,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
     if (unreadIncoming.isEmpty) return;
 
     try {
-      await _chatService.markMessagesAsRead(
-        bookingId: _bookingId,
-        messageIds: unreadIncoming,
-        currentUserRole: _senderRole,
-      );
+      await _chatService.markMessagesAsRead(messageIds: unreadIncoming);
     } catch (_) {}
   }
 
@@ -329,7 +309,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
 
     if (!_canSend) return;
 
-    if (senderId.isEmpty || _receiverId.isEmpty) {
+    if (_chatContext.senderId.isEmpty || _chatContext.receiverId.isEmpty) {
       _showSnack('Chat participants are not available for this booking yet.');
       return;
     }
@@ -339,7 +319,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
     });
 
     try {
-      LaundryChatMessageType messageType = LaundryChatMessageType.text;
+      ChatMessageType messageType = ChatMessageType.text;
       String? mediaUrl;
       String? storagePath;
       String? fileName;
@@ -348,9 +328,8 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
       int? videoDurationSeconds;
 
       if (_pickedImageFile != null) {
-        messageType = LaundryChatMessageType.image;
+        messageType = ChatMessageType.image;
         final upload = await _chatService.uploadChatMedia(
-          bookingId: _bookingId,
           file: _pickedImageFile!,
           folder: 'images',
         );
@@ -362,7 +341,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
       }
 
       if (_pickedVideoFile != null) {
-        messageType = LaundryChatMessageType.video;
+        messageType = ChatMessageType.video;
         videoDurationSeconds = await _chatService.getVideoDurationInSeconds(
           _pickedVideoFile!,
         );
@@ -378,7 +357,6 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
         }
 
         final upload = await _chatService.uploadChatMedia(
-          bookingId: _bookingId,
           file: _pickedVideoFile!,
           folder: 'videos',
         );
@@ -390,12 +368,6 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
       }
 
       await _chatService.sendMessage(
-        bookingId: _bookingId,
-        senderId: senderId,
-        senderRole: _senderRole,
-        senderName: _senderName,
-        receiverId: _receiverId,
-        receiverRole: _receiverRole,
         messageType: messageType,
         text: text,
         mediaUrl: mediaUrl,
@@ -465,7 +437,6 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
 
     try {
       await _chatService.deleteMessagesForEveryone(
-        bookingId: _bookingId,
         messageIds: _selectedMessageIds.toList(),
       );
 
@@ -551,8 +522,8 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
             child: ClipOval(
               child: Container(
                 color: const Color(0xFFE36C9A),
-                child: const Icon(
-                  Icons.local_laundry_service_rounded,
+                child: Icon(
+                  _chatContext.avatarIcon,
                   color: Colors.white,
                   size: 22,
                 ),
@@ -562,7 +533,7 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _chatTitle,
+              _chatContext.title,
               style: const TextStyle(
                 color: Colors.black87,
                 fontWeight: FontWeight.w700,
@@ -587,8 +558,8 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
             child: Column(
               children: [
                 Expanded(
-                  child: StreamBuilder<List<LaundryChatMessage>>(
-                    stream: _chatService.streamMessages(_bookingId),
+                  child: StreamBuilder<List<ChatMessage>>(
+                    stream: _chatService.streamMessages(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting &&
                           !snapshot.hasData) {
@@ -610,7 +581,9 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
                       final messages = snapshot.data ?? [];
 
                       if (messages.isEmpty) {
-                        return const _EmptyChatView();
+                        return EmptyChatView(
+                          collectionName: _chatContext.collectionName,
+                        );
                       }
 
                       return ListView.builder(
@@ -787,32 +760,298 @@ class _LaundryChatScreenState extends State<LaundryChatScreen> {
   }
 }
 
-class LaundryChatService {
-  LaundryChatService({FirebaseFirestore? firestore, FirebaseStorage? storage})
-    : _firestore = firestore ?? FirebaseFirestore.instance,
-      _storage = storage ?? FirebaseStorage.instance;
+class ChatContext {
+  final String bookingId;
+  final String collectionName;
+  final String senderId;
+  final String senderRole;
+  final String senderName;
+  final String receiverId;
+  final String receiverRole;
+  final String title;
+  final IconData avatarIcon;
 
+  const ChatContext({
+    required this.bookingId,
+    required this.collectionName,
+    required this.senderId,
+    required this.senderRole,
+    required this.senderName,
+    required this.receiverId,
+    required this.receiverRole,
+    required this.title,
+    required this.avatarIcon,
+  });
+}
+
+class ChatContextResolver {
+  static ChatContext resolve({
+    required BookingModel booking,
+    required String currentUserId,
+    required String currentUserRole,
+    required String otherParticipantRole,
+    String? otherParticipantId,
+  }) {
+    final currentRole = _parseRole(currentUserRole);
+    final otherRole = _parseRole(otherParticipantRole);
+
+    final currentLeg = _resolveRiderLeg(
+      booking: booking,
+      userId: currentUserId,
+      role: currentRole,
+    );
+
+    final otherLeg = _resolveRiderLeg(
+      booking: booking,
+      userId: otherParticipantId,
+      role: otherRole,
+    );
+
+    String collectionName;
+    String senderRole;
+    String receiverRole;
+
+    if (currentRole == ChatActorRole.customer &&
+        otherRole == ChatActorRole.rider) {
+      if (otherLeg != RiderLegRole.pickupRider) {
+        throw Exception(
+          'Customer can only chat with the pickup rider or delivery rider through the matching subcollection.',
+        );
+      }
+      collectionName = 'customer_pickupRider';
+      senderRole = 'customer';
+      receiverRole = 'pickupRider';
+    } else if (currentRole == ChatActorRole.rider &&
+        otherRole == ChatActorRole.customer) {
+      if (currentLeg == RiderLegRole.pickupRider) {
+        collectionName = 'customer_pickupRider';
+        senderRole = 'pickupRider';
+        receiverRole = 'customer';
+      } else if (currentLeg == RiderLegRole.deliveryRider) {
+        collectionName = 'deliveryRider_customer';
+        senderRole = 'deliveryRider';
+        receiverRole = 'customer';
+      } else {
+        throw Exception('This rider is not assigned to the booking.');
+      }
+    } else if (currentRole == ChatActorRole.rider &&
+        otherRole == ChatActorRole.laundry) {
+      if (currentLeg == RiderLegRole.pickupRider) {
+        collectionName = 'pickupRider_laundry';
+        senderRole = 'pickupRider';
+        receiverRole = 'laundry';
+      } else if (currentLeg == RiderLegRole.deliveryRider) {
+        collectionName = 'laundry_deliveryRider';
+        senderRole = 'deliveryRider';
+        receiverRole = 'laundry';
+      } else {
+        throw Exception('This rider is not assigned to the booking.');
+      }
+    } else if (currentRole == ChatActorRole.laundry &&
+        otherRole == ChatActorRole.rider) {
+      if (otherLeg == RiderLegRole.pickupRider) {
+        collectionName = 'pickupRider_laundry';
+        senderRole = 'laundry';
+        receiverRole = 'pickupRider';
+      } else if (otherLeg == RiderLegRole.deliveryRider) {
+        collectionName = 'laundry_deliveryRider';
+        senderRole = 'laundry';
+        receiverRole = 'deliveryRider';
+      } else {
+        throw Exception('The selected rider is not assigned to the booking.');
+      }
+    } else if (currentRole == ChatActorRole.customer &&
+        otherRole == ChatActorRole.laundry) {
+      collectionName = 'customer_laundry';
+      senderRole = 'customer';
+      receiverRole = 'laundry';
+    } else if (currentRole == ChatActorRole.laundry &&
+        otherRole == ChatActorRole.customer) {
+      collectionName = 'customer_laundry';
+      senderRole = 'laundry';
+      receiverRole = 'customer';
+    } else {
+      throw Exception(
+        'Unsupported chat pairing: $currentUserRole -> $otherParticipantRole',
+      );
+    }
+
+    final senderId = _resolveParticipantId(
+      booking: booking,
+      role: senderRole,
+      currentUserId: currentUserId,
+    );
+
+    final receiverId = _resolveParticipantId(
+      booking: booking,
+      role: receiverRole,
+      currentUserId: otherParticipantId ?? '',
+    );
+
+    final senderName = _resolveDisplayName(
+      booking: booking,
+      role: senderRole,
+      fallbackUserId: currentUserId,
+    );
+
+    final title = _resolveTitle(booking: booking, role: receiverRole);
+
+    final avatarIcon = _resolveAvatarIcon(receiverRole);
+
+    return ChatContext(
+      bookingId: booking.id,
+      collectionName: collectionName,
+      senderId: senderId,
+      senderRole: senderRole,
+      senderName: senderName,
+      receiverId: receiverId,
+      receiverRole: receiverRole,
+      title: title,
+      avatarIcon: avatarIcon,
+    );
+  }
+
+  static ChatActorRole _parseRole(String raw) {
+    switch (raw.trim().toLowerCase()) {
+      case 'customer':
+        return ChatActorRole.customer;
+      case 'laundry':
+        return ChatActorRole.laundry;
+      case 'rider':
+        return ChatActorRole.rider;
+      default:
+        throw Exception('Invalid chat role: $raw');
+    }
+  }
+
+  static RiderLegRole? _resolveRiderLeg({
+    required BookingModel booking,
+    required ChatActorRole role,
+    required String? userId,
+  }) {
+    if (role != ChatActorRole.rider ||
+        userId == null ||
+        userId.trim().isEmpty) {
+      return null;
+    }
+
+    if (booking.pickupRiderId == userId) return RiderLegRole.pickupRider;
+    if (booking.deliveryRiderId == userId) return RiderLegRole.deliveryRider;
+    return null;
+  }
+
+  static String _resolveParticipantId({
+    required BookingModel booking,
+    required String role,
+    required String currentUserId,
+  }) {
+    switch (role) {
+      case 'customer':
+        return booking.customerId;
+      case 'laundry':
+        return booking.laundryId ?? '';
+      case 'pickupRider':
+        return booking.pickupRiderId ?? currentUserId;
+      case 'deliveryRider':
+        return booking.deliveryRiderId ?? currentUserId;
+      default:
+        return '';
+    }
+  }
+
+  static String _resolveDisplayName({
+    required BookingModel booking,
+    required String role,
+    required String fallbackUserId,
+  }) {
+    switch (role) {
+      case 'customer':
+        return booking.customerName.trim().isEmpty
+            ? 'Customer'
+            : booking.customerName;
+      case 'laundry':
+        final name = booking.laundryName ?? '';
+        return name.trim().isEmpty ? 'Laundry' : name;
+      case 'pickupRider':
+        final name = booking.pickupRiderName ?? '';
+        return name.trim().isEmpty ? 'Pickup Rider' : name;
+      case 'deliveryRider':
+        final name = booking.deliveryRiderName ?? '';
+        return name.trim().isEmpty ? 'Delivery Rider' : name;
+      default:
+        return fallbackUserId;
+    }
+  }
+
+  static String _resolveTitle({
+    required BookingModel booking,
+    required String role,
+  }) {
+    switch (role) {
+      case 'customer':
+        return booking.customerName.trim().isEmpty
+            ? 'Customer'
+            : booking.customerName;
+      case 'laundry':
+        final name = booking.laundryName ?? '';
+        return name.trim().isEmpty ? 'Laundry' : name;
+      case 'pickupRider':
+        final name = booking.pickupRiderName ?? '';
+        return name.trim().isEmpty ? 'Pickup Rider' : name;
+      case 'deliveryRider':
+        final name = booking.deliveryRiderName ?? '';
+        return name.trim().isEmpty ? 'Delivery Rider' : name;
+      default:
+        return 'Chat';
+    }
+  }
+
+  static IconData _resolveAvatarIcon(String role) {
+    switch (role) {
+      case 'customer':
+        return Icons.person_rounded;
+      case 'laundry':
+        return Icons.local_laundry_service_rounded;
+      case 'pickupRider':
+      case 'deliveryRider':
+        return Icons.delivery_dining_rounded;
+      default:
+        return Icons.chat_bubble_outline_rounded;
+    }
+  }
+}
+
+class ChatService {
+  ChatService({
+    required ChatContext chatContext,
+    FirebaseFirestore? firestore,
+    FirebaseStorage? storage,
+  }) : _chatContext = chatContext,
+       _firestore = firestore ?? FirebaseFirestore.instance,
+       _storage = storage ?? FirebaseStorage.instance;
+
+  final ChatContext _chatContext;
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
 
-  CollectionReference<Map<String, dynamic>> _chatCollection(String bookingId) {
+  CollectionReference<Map<String, dynamic>> _chatCollection() {
     return _firestore
         .collection('bookings')
-        .doc(bookingId)
-        .collection('laundry_chat');
+        .doc(_chatContext.bookingId)
+        .collection(_chatContext.collectionName);
   }
 
-  DocumentReference<Map<String, dynamic>> _bookingRef(String bookingId) {
-    return _firestore.collection('bookings').doc(bookingId);
+  DocumentReference<Map<String, dynamic>> _bookingRef() {
+    return _firestore.collection('bookings').doc(_chatContext.bookingId);
   }
 
-  Stream<List<LaundryChatMessage>> streamMessages(String bookingId) {
-    return _chatCollection(bookingId)
+  Stream<List<ChatMessage>> streamMessages() {
+    return _chatCollection()
         .orderBy('createdAt', descending: false)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
-              .map((doc) => LaundryChatMessage.fromMap(doc.id, doc.data()))
+              .map((doc) => ChatMessage.fromMap(doc.id, doc.data()))
               .toList(),
         );
   }
@@ -830,14 +1069,14 @@ class LaundryChatService {
   }
 
   Future<_UploadedChatMedia> uploadChatMedia({
-    required String bookingId,
     required File file,
     required String folder,
   }) async {
     final fileName =
         '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
 
-    final storagePath = 'booking_chats/$bookingId/$folder/$fileName';
+    final storagePath =
+        'booking_chats/${_chatContext.bookingId}/${_chatContext.collectionName}/$folder/$fileName';
 
     final ref = _storage.ref().child(storagePath);
     final task = await ref.putFile(file);
@@ -853,13 +1092,7 @@ class LaundryChatService {
   }
 
   Future<void> sendMessage({
-    required String bookingId,
-    required String senderId,
-    required String senderRole,
-    required String senderName,
-    required String receiverId,
-    required String receiverRole,
-    required LaundryChatMessageType messageType,
+    required ChatMessageType messageType,
     required String text,
     String? mediaUrl,
     String? storagePath,
@@ -868,8 +1101,8 @@ class LaundryChatService {
     int? fileSizeBytes,
     int? videoDurationSeconds,
   }) async {
-    final bookingRef = _bookingRef(bookingId);
-    final messageRef = _chatCollection(bookingId).doc();
+    final bookingRef = _bookingRef();
+    final messageRef = _chatCollection().doc();
 
     final String normalizedText = text.trim();
     final String previewText = _messagePreview(
@@ -880,12 +1113,13 @@ class LaundryChatService {
     final batch = _firestore.batch();
 
     batch.set(messageRef, {
-      'bookingId': bookingId,
-      'senderId': senderId,
-      'senderRole': senderRole,
-      'senderName': senderName,
-      'receiverId': receiverId,
-      'receiverRole': receiverRole,
+      'bookingId': _chatContext.bookingId,
+      'chatCollection': _chatContext.collectionName,
+      'senderId': _chatContext.senderId,
+      'senderRole': _chatContext.senderRole,
+      'senderName': _chatContext.senderName,
+      'receiverId': _chatContext.receiverId,
+      'receiverRole': _chatContext.receiverRole,
       'messageType': describeEnum(messageType),
       'text': normalizedText,
       'mediaUrl': mediaUrl,
@@ -904,60 +1138,46 @@ class LaundryChatService {
     });
 
     batch.set(bookingRef, {
-      'chatMeta.lastMessage': previewText,
-      'chatMeta.lastMessageType': describeEnum(messageType),
-      'chatMeta.lastMessageSenderId': senderId,
-      'chatMeta.lastMessageSenderRole': senderRole,
-      'chatMeta.lastMessageAt': FieldValue.serverTimestamp(),
-      'chatMeta.customerUnreadCount': senderRole == 'laundry'
-          ? FieldValue.increment(1)
-          : 0,
-      'chatMeta.laundryUnreadCount': senderRole == 'customer'
-          ? FieldValue.increment(1)
-          : 0,
+      'chatMeta.${_chatContext.collectionName}.lastMessage': previewText,
+      'chatMeta.${_chatContext.collectionName}.lastMessageType': describeEnum(
+        messageType,
+      ),
+      'chatMeta.${_chatContext.collectionName}.lastMessageSenderId':
+          _chatContext.senderId,
+      'chatMeta.${_chatContext.collectionName}.lastMessageSenderRole':
+          _chatContext.senderRole,
+      'chatMeta.${_chatContext.collectionName}.lastMessageAt':
+          FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     await batch.commit();
   }
 
-  Future<void> markMessagesAsRead({
-    required String bookingId,
-    required List<String> messageIds,
-    required String currentUserRole,
-  }) async {
+  Future<void> markMessagesAsRead({required List<String> messageIds}) async {
     if (messageIds.isEmpty) return;
 
     final batch = _firestore.batch();
     final now = FieldValue.serverTimestamp();
 
     for (final id in messageIds) {
-      batch.update(_chatCollection(bookingId).doc(id), {
+      batch.update(_chatCollection().doc(id), {
         'isRead': true,
         'readAt': now,
         'updatedAt': now,
       });
     }
 
-    batch.set(_bookingRef(bookingId), {
-      currentUserRole == 'laundry'
-              ? 'chatMeta.laundryUnreadCount'
-              : 'chatMeta.customerUnreadCount':
-          0,
-      'updatedAt': now,
-    }, SetOptions(merge: true));
-
     await batch.commit();
   }
 
   Future<void> deleteMessagesForEveryone({
-    required String bookingId,
     required List<String> messageIds,
   }) async {
     if (messageIds.isEmpty) return;
 
     final docs = await Future.wait(
-      messageIds.map((id) => _chatCollection(bookingId).doc(id).get()),
+      messageIds.map((id) => _chatCollection().doc(id).get()),
     );
 
     for (final snap in docs) {
@@ -975,25 +1195,26 @@ class LaundryChatService {
 
     final batch = _firestore.batch();
     for (final id in messageIds) {
-      batch.delete(_chatCollection(bookingId).doc(id));
+      batch.delete(_chatCollection().doc(id));
     }
     await batch.commit();
 
-    await _refreshBookingChatMeta(bookingId);
+    await _refreshBookingChatMeta();
   }
 
-  Future<void> _refreshBookingChatMeta(String bookingId) async {
-    final query = await _chatCollection(
-      bookingId,
-    ).orderBy('createdAt', descending: true).limit(1).get();
+  Future<void> _refreshBookingChatMeta() async {
+    final query = await _chatCollection()
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .get();
 
     if (query.docs.isEmpty) {
-      await _bookingRef(bookingId).set({
-        'chatMeta.lastMessage': null,
-        'chatMeta.lastMessageType': null,
-        'chatMeta.lastMessageSenderId': null,
-        'chatMeta.lastMessageSenderRole': null,
-        'chatMeta.lastMessageAt': null,
+      await _bookingRef().set({
+        'chatMeta.${_chatContext.collectionName}.lastMessage': null,
+        'chatMeta.${_chatContext.collectionName}.lastMessageType': null,
+        'chatMeta.${_chatContext.collectionName}.lastMessageSenderId': null,
+        'chatMeta.${_chatContext.collectionName}.lastMessageSenderRole': null,
+        'chatMeta.${_chatContext.collectionName}.lastMessageAt': null,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return;
@@ -1001,30 +1222,34 @@ class LaundryChatService {
 
     final last = query.docs.first.data();
 
-    await _bookingRef(bookingId).set({
-      'chatMeta.lastMessage': _messagePreview(
-        type: LaundryChatMessage._parseMessageType(last['messageType']),
+    await _bookingRef().set({
+      'chatMeta.${_chatContext.collectionName}.lastMessage': _messagePreview(
+        type: ChatMessage._parseMessageType(last['messageType']),
         text: (last['text'] ?? '').toString(),
       ),
-      'chatMeta.lastMessageType': last['messageType'],
-      'chatMeta.lastMessageSenderId': last['senderId'],
-      'chatMeta.lastMessageSenderRole': last['senderRole'],
-      'chatMeta.lastMessageAt': last['createdAt'],
+      'chatMeta.${_chatContext.collectionName}.lastMessageType':
+          last['messageType'],
+      'chatMeta.${_chatContext.collectionName}.lastMessageSenderId':
+          last['senderId'],
+      'chatMeta.${_chatContext.collectionName}.lastMessageSenderRole':
+          last['senderRole'],
+      'chatMeta.${_chatContext.collectionName}.lastMessageAt':
+          last['createdAt'],
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
   String _messagePreview({
-    required LaundryChatMessageType type,
+    required ChatMessageType type,
     required String text,
   }) {
-    if (type == LaundryChatMessageType.text) {
+    if (type == ChatMessageType.text) {
       return text.isEmpty ? 'Message' : text;
     }
-    if (type == LaundryChatMessageType.image) {
+    if (type == ChatMessageType.image) {
       return '📷 Sent an image';
     }
-    if (type == LaundryChatMessageType.video) {
+    if (type == ChatMessageType.video) {
       return '🎥 Sent a video';
     }
     return text.isEmpty ? 'System update' : text;
@@ -1056,15 +1281,16 @@ class LaundryChatService {
   }
 }
 
-class LaundryChatMessage {
+class ChatMessage {
   final String id;
   final String bookingId;
+  final String chatCollection;
   final String senderId;
   final String senderRole;
   final String senderName;
   final String receiverId;
   final String receiverRole;
-  final LaundryChatMessageType messageType;
+  final ChatMessageType messageType;
   final String text;
   final String? mediaUrl;
   final String? storagePath;
@@ -1080,9 +1306,10 @@ class LaundryChatMessage {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  const LaundryChatMessage({
+  const ChatMessage({
     required this.id,
     required this.bookingId,
+    required this.chatCollection,
     required this.senderId,
     required this.senderRole,
     required this.senderName,
@@ -1105,10 +1332,11 @@ class LaundryChatMessage {
     required this.updatedAt,
   });
 
-  factory LaundryChatMessage.fromMap(String id, Map<String, dynamic> map) {
-    return LaundryChatMessage(
+  factory ChatMessage.fromMap(String id, Map<String, dynamic> map) {
+    return ChatMessage(
       id: id,
       bookingId: (map['bookingId'] ?? '').toString(),
+      chatCollection: (map['chatCollection'] ?? '').toString(),
       senderId: (map['senderId'] ?? '').toString(),
       senderRole: (map['senderRole'] ?? '').toString(),
       senderName: (map['senderName'] ?? '').toString(),
@@ -1132,18 +1360,18 @@ class LaundryChatMessage {
     );
   }
 
-  static LaundryChatMessageType _parseMessageType(dynamic value) {
+  static ChatMessageType _parseMessageType(dynamic value) {
     final raw = (value ?? 'text').toString().trim().toLowerCase();
     switch (raw) {
       case 'image':
-        return LaundryChatMessageType.image;
+        return ChatMessageType.image;
       case 'video':
-        return LaundryChatMessageType.video;
+        return ChatMessageType.video;
       case 'system':
-        return LaundryChatMessageType.system;
+        return ChatMessageType.system;
       case 'text':
       default:
-        return LaundryChatMessageType.text;
+        return ChatMessageType.text;
     }
   }
 
@@ -1183,24 +1411,26 @@ class _UploadedChatMedia {
   });
 }
 
-class _EmptyChatView extends StatelessWidget {
-  const _EmptyChatView();
+class EmptyChatView extends StatelessWidget {
+  final String collectionName;
+
+  const EmptyChatView({super.key, required this.collectionName});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            const Icon(
               Icons.chat_bubble_outline_rounded,
               size: 58,
               color: AppColors.iconMuted,
             ),
-            SizedBox(height: 14),
-            Text(
+            const SizedBox(height: 14),
+            const Text(
               'No messages yet',
               style: TextStyle(
                 fontSize: 18,
@@ -1208,11 +1438,11 @@ class _EmptyChatView extends StatelessWidget {
                 color: AppColors.textPrimary,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'Messages about this booking will appear here.',
+              'Messages for $collectionName will appear here.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w500,
@@ -1472,7 +1702,7 @@ class _ComposerMediaPreview extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  final LaundryChatMessage message;
+  final ChatMessage message;
   final bool isMine;
   final bool isFirstSequence;
   final String timestamp;
@@ -1516,7 +1746,7 @@ class _MessageBubble extends StatelessWidget {
 
     Widget buildContent() {
       switch (message.messageType) {
-        case LaundryChatMessageType.image:
+        case ChatMessageType.image:
           return GestureDetector(
             onTap: isSelectionMode
                 ? onTap
@@ -1543,7 +1773,7 @@ class _MessageBubble extends StatelessWidget {
             ),
           );
 
-        case LaundryChatMessageType.video:
+        case ChatMessageType.video:
           return SizedBox(
             width: 240,
             child: _VideoPreview(
@@ -1552,8 +1782,8 @@ class _MessageBubble extends StatelessWidget {
             ),
           );
 
-        case LaundryChatMessageType.system:
-        case LaundryChatMessageType.text:
+        case ChatMessageType.system:
+        case ChatMessageType.text:
           return Text(
             message.text,
             style: TextStyle(
@@ -1591,7 +1821,7 @@ class _MessageBubble extends StatelessWidget {
                         radius: 10,
                         backgroundColor: Color(0xFFE36C9A),
                         child: Icon(
-                          Icons.local_laundry_service_rounded,
+                          Icons.chat_bubble_outline_rounded,
                           color: Colors.white,
                           size: 11,
                         ),
@@ -1627,19 +1857,16 @@ class _MessageBubble extends StatelessWidget {
                           maxWidth: MediaQuery.of(context).size.width * 0.76,
                         ),
                         padding: EdgeInsets.fromLTRB(
-                          message.messageType == LaundryChatMessageType.text ||
-                                  message.messageType ==
-                                      LaundryChatMessageType.system
+                          message.messageType == ChatMessageType.text ||
+                                  message.messageType == ChatMessageType.system
                               ? 16
                               : 8,
-                          message.messageType == LaundryChatMessageType.text ||
-                                  message.messageType ==
-                                      LaundryChatMessageType.system
+                          message.messageType == ChatMessageType.text ||
+                                  message.messageType == ChatMessageType.system
                               ? 12
                               : 8,
-                          message.messageType == LaundryChatMessageType.text ||
-                                  message.messageType ==
-                                      LaundryChatMessageType.system
+                          message.messageType == ChatMessageType.text ||
+                                  message.messageType == ChatMessageType.system
                               ? 16
                               : 8,
                           10,

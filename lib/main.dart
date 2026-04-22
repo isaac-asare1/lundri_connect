@@ -10,7 +10,6 @@ import 'providers/auth_provider.dart';
 import 'providers/navigation_provider.dart';
 import 'providers/orders_provider.dart';
 import 'providers/payments_provider.dart';
-import 'providers/rider_provider.dart';
 import 'providers/user_provider.dart';
 
 void main() async {
@@ -27,7 +26,6 @@ void main() async {
         ChangeNotifierProvider<PaymentsProvider>(
           create: (_) => PaymentsProvider(),
         ),
-        ChangeNotifierProvider<RiderProvider>(create: (_) => RiderProvider()),
         ChangeNotifierProvider<NavigationProvider>(
           create: (_) => NavigationProvider(),
         ),

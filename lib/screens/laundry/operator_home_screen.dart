@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:lundri_connect/screens/active_orders_screen.dart';
+import 'package:lundri_connect/screens/rider/active_orders_screen.dart';
 import 'package:lundri_connect/screens/payments_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -48,20 +48,19 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
   bool _isActiveStatus(String status) {
     final normalized = status.trim().toLowerCase();
 
-    const nonActiveStatuses = {
-      'looking_for_pickup_rider',
-      'pickup_rider_assigned',
+    const activeStatuses = {
       'pickup_started',
+      'arrived_at_pickup',
       'picked_up',
       'arrived_at_laundry',
       'processing',
       'ready_for_dropoff',
-      'delivery_rider_assigned',
-      'delivery_started',
       'delivery_in_progress',
+      'arrived_at_customer',
+      'looking_for_pickup_rider',
     };
 
-    return nonActiveStatuses.contains(normalized);
+    return activeStatuses.contains(normalized);
   }
 
   bool _isPendingPayment(String paymentStatus) {
@@ -161,107 +160,57 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                GridView.count(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: 1.12,
+                                GridView.builder(
+                                  itemCount: 4,
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  children: [
-                                    _ModernStatCard(
-                                      title: 'Requests',
-                                      value: '$pendingRequests',
-                                      subtitle: 'Incoming bookings',
-                                      icon: Icons.inbox_rounded,
-                                    ),
-                                    _ModernStatCard(
-                                      title: 'Orders',
-                                      value: '$activeOrdersCount',
-                                      subtitle: 'Currently active',
-                                      icon: Icons.local_laundry_service_rounded,
-                                    ),
-                                    _ModernStatCard(
-                                      title: 'Payments',
-                                      value: '$pendingPayments',
-                                      subtitle: 'Pending clearance',
-                                      icon:
-                                          Icons.account_balance_wallet_rounded,
-                                    ),
-                                    Consumer<UserProvider>(
-                                      builder: (context, provider, child) {
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        crossAxisSpacing: 12,
+                                        mainAxisSpacing: 12,
+                                        mainAxisExtent: 158,
+                                      ),
+                                  itemBuilder: (context, index) {
+                                    switch (index) {
+                                      case 0:
                                         return _ModernStatCard(
-                                          title: 'Pickup',
-                                          value: provider.isOnline
-                                              ? "Enabled"
-                                              : "Off",
-                                          subtitle: 'Service availability',
-                                          icon: Icons.local_shipping_rounded,
+                                          title: 'Requests',
+                                          value: '$pendingRequests',
+                                          subtitle: 'Incoming bookings',
+                                          icon: Icons.inbox_rounded,
                                         );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                const Text(
-                                  'Quick Actions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _QuickActionCard(
-                                        icon: Icons.inbox_outlined,
-                                        title: 'View Requests',
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const OrdersScreen(),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _QuickActionCard(
-                                        icon: Icons.delivery_dining_rounded,
-                                        title: 'Track Orders',
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const ActiveOrdersScreen(),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _QuickActionCard(
-                                        icon: Icons.payments_outlined,
-                                        title: 'Payments',
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const PaymentsScreen(),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
+                                      case 1:
+                                        return _ModernStatCard(
+                                          title: 'Orders',
+                                          value: '$activeOrdersCount',
+                                          subtitle: 'Currently active',
+                                          icon: Icons
+                                              .local_laundry_service_rounded,
+                                        );
+                                      case 2:
+                                        return _ModernStatCard(
+                                          title: 'Payments',
+                                          value: '$pendingPayments',
+                                          subtitle: 'Pending clearance',
+                                          icon: Icons
+                                              .account_balance_wallet_rounded,
+                                        );
+                                      default:
+                                        return Consumer<UserProvider>(
+                                          builder: (context, provider, child) {
+                                            return _ModernStatCard(
+                                              title: 'Pickup',
+                                              value: provider.isOnline
+                                                  ? 'Enabled'
+                                                  : 'Off',
+                                              subtitle: 'Service availability',
+                                              icon: Icons.moped,
+                                            );
+                                          },
+                                        );
+                                    }
+                                  },
                                 ),
                               ],
                             ),
@@ -477,6 +426,7 @@ class _QuickActionCard extends StatelessWidget {
             ],
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 height: 42,
@@ -491,6 +441,8 @@ class _QuickActionCard extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 12.8,
                   fontWeight: FontWeight.w700,
@@ -535,28 +487,38 @@ class _ModernStatCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: AppColors.primary, size: 22),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: AppColors.primary, size: 22),
+              ),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
+
+          const SizedBox(height: 6),
           Text(
             title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -564,12 +526,17 @@ class _ModernStatCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+          Expanded(
+            child: Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                height: 1.25,
+              ),
             ),
           ),
         ],
@@ -610,7 +577,7 @@ class _ModernHeaderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Operator Dashboard',
+                  'Dashboard',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -628,15 +595,7 @@ class _ModernHeaderCard extends StatelessWidget {
                     height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  businessName,
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
+
                 const SizedBox(height: 14),
                 const Text(
                   'Manage laundry requests, monitor orders, and stay on top of business activity from one clean dashboard.',
@@ -658,11 +617,7 @@ class _ModernHeaderCard extends StatelessWidget {
               color: Colors.white.withOpacity(0.16),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(
-              Icons.storefront_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+            child: const Icon(Icons.store, color: Colors.white, size: 28),
           ),
         ],
       ),
@@ -685,7 +640,7 @@ class BookingService {
 
     return _firestore
         .collection(_bookingsCollection)
-        .where('laundrySnapshot.laundryId', isEqualTo: laundryId)
+        .where('laundryId', isEqualTo: laundryId)
         .snapshots()
         .map((snapshot) {
           final bookings = snapshot.docs
@@ -694,9 +649,13 @@ class BookingService {
 
           bookings.sort((a, b) {
             final aTime =
-                a.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                a.updatedAt ??
+                a.requestedAt ??
+                DateTime.fromMillisecondsSinceEpoch(0);
             final bTime =
-                b.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                b.updatedAt ??
+                b.requestedAt ??
+                DateTime.fromMillisecondsSinceEpoch(0);
             return bTime.compareTo(aTime);
           });
 

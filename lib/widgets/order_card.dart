@@ -60,7 +60,7 @@ class OrderCard extends StatelessWidget {
               const SizedBox(height: 8),
               _InfoLine(
                 icon: Icons.location_on_outlined,
-                text: order.deliveryAddress,
+                text: order.customerAddress,
               ),
               if (onRequestRider != null) ...[
                 const SizedBox(height: 16),

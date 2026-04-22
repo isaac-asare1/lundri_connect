@@ -4,7 +4,7 @@ class RiderRequestModel {
   final String riderId;
   final String customerName;
   final String pickupAddress;
-  final String deliveryAddress;
+  final String customerAddress;
   final String requestType;
   final String status;
   final DateTime createdAt;
@@ -16,7 +16,7 @@ class RiderRequestModel {
     required this.riderId,
     required this.customerName,
     required this.pickupAddress,
-    required this.deliveryAddress,
+    required this.customerAddress,
     required this.requestType,
     required this.status,
     required this.createdAt,
@@ -29,7 +29,7 @@ class RiderRequestModel {
     String? riderId,
     String? customerName,
     String? pickupAddress,
-    String? deliveryAddress,
+    String? customerAddress,
     String? requestType,
     String? status,
     DateTime? createdAt,
@@ -41,7 +41,7 @@ class RiderRequestModel {
       riderId: riderId ?? this.riderId,
       customerName: customerName ?? this.customerName,
       pickupAddress: pickupAddress ?? this.pickupAddress,
-      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      customerAddress: customerAddress ?? this.customerAddress,
       requestType: requestType ?? this.requestType,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
@@ -56,7 +56,7 @@ class RiderRequestModel {
       'riderId': riderId,
       'customerName': customerName,
       'pickupAddress': pickupAddress,
-      'deliveryAddress': deliveryAddress,
+      'customerAddress': customerAddress,
       'requestType': requestType,
       'status': status,
       'createdAt': createdAt.toIso8601String(),
@@ -71,7 +71,7 @@ class RiderRequestModel {
       riderId: map['riderId'] as String? ?? '',
       customerName: map['customerName'] as String? ?? '',
       pickupAddress: map['pickupAddress'] as String? ?? '',
-      deliveryAddress: map['deliveryAddress'] as String? ?? '',
+      customerAddress: map['customerAddress'] as String? ?? '',
       requestType: map['requestType'] as String? ?? 'pickup',
       status: map['status'] as String? ?? 'pending',
       createdAt:
