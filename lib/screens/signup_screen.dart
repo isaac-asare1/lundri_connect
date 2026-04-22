@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../core/constants/app_colors.dart';
 import '../core/routes/route_names.dart';
 import '../core/utils/helpers.dart';
 import '../core/utils/validators.dart';
 import '../providers/auth_provider.dart';
-import '../providers/orders_provider.dart';
-import '../providers/payments_provider.dart';
-import '../providers/rider_provider.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
+import 'laundry/laundry_location_picker_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -88,13 +85,22 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    await context.read<OrdersProvider>().loadDemoData();
-    await context.read<PaymentsProvider>().loadDemoPayments();
-    await context.read<RiderProvider>().loadDemoRiderRequests();
-
-    if (!mounted) return;
-
     Helpers.showSnackBar(context, 'Account created successfully');
+
+    if (_selectedRole == 'laundry') {
+      final result = await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LaundryLocationPickerScreen()),
+      );
+
+      if (!mounted) return;
+
+      if (result == true) {
+        Navigator.pushReplacementNamed(context, RouteNames.mainNavigation);
+      }
+      return;
+    }
+
     Navigator.pushReplacementNamed(context, RouteNames.mainNavigation);
   }
 

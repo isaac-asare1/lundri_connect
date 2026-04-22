@@ -219,48 +219,59 @@ class AuthProvider extends ChangeNotifier {
     required String email,
   }) {
     return {
-      'uid': uid,
-      'fullName': fullName,
-      'phoneNumber': '',
-      'email': email,
-      'photoUrl': '',
+      'id': uid,
+      'role': 'rider',
 
-      'vehicleType': '',
-      'vehicleMake': '',
-      'vehicleColor': '',
-      'plateNumber': '',
+      'profile': {'fullName': fullName, 'photoUrl': ''},
 
-      'isApproved': false,
-      'isOnline': false,
-      'availabilityStatus': 'offline',
-      'acceptingDeliveries': false,
+      'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
 
-      'currentBookingId': null,
-      'currentLaundryId': null,
-      'currentCustomerId': null,
+      'location': {
+        'addressLine': '',
+        'latitude': null,
+        'longitude': null,
+        'digitalAddress': '',
+        'landmark': '',
+        'lastLocationUpdatedAt': null,
+      },
 
-      'currentLatitude': null,
-      'currentLongitude': null,
-      'lastLocationUpdatedAt': null,
+      'business': {
+        'isApproved': false,
+        'isOnline': false,
+        'availabilityStatus': 'offline',
+        'acceptingAssignments': false,
+        'maxActiveRequests': 2,
+        'currentActiveRequestCount': 0,
+        'activeRequestIds': <String>[],
+        'currentLaundryIds': <String>[],
+        'currentCustomerIds': <String>[],
+      },
 
-      'rating': 0.0,
-      'totalReviews': 0,
+      'vehicle': {'type': '', 'make': '', 'color': '', 'plateNumber': ''},
+
+      'ratings': {'rating': 0.0, 'totalReviews': 0},
 
       'stats': {
+        'totalRequestsReceived': 0,
+        'acceptedRequests': 0,
+        'rejectedRequests': 0,
         'totalDeliveries': 0,
         'completedDeliveries': 0,
         'cancelledDeliveries': 0,
       },
 
-      'fcmTokens': <String, dynamic>{},
-      'fcmUpdatedAt': null,
+      'chat': {
+        'lastSeenAt': null,
+        'fcmTokens': <String, bool>{},
+        'fcmUpdatedAt': null,
+      },
 
-      'lastLoginAt': FieldValue.serverTimestamp(),
-      'lastSeen': FieldValue.serverTimestamp(),
-
-      'role': 'rider',
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
+      'timestamps': {
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+        'lastSeen': FieldValue.serverTimestamp(),
+      },
     };
   }
 

@@ -8,7 +8,6 @@ import '../../models/booking_model.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/loading_widget.dart';
 import 'booking_details_screen.dart';
-import 'chats_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -231,17 +230,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                               ),
                             );
                           },
-                    onChatTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => LaundryChatScreen(
-                            booking: booking,
-                            currentUserRole: 'laundry',
-                          ),
-                        ),
-                      );
-                    },
                   ),
                 ),
               ],
@@ -606,23 +594,8 @@ class _NewOrderCardState extends State<_NewOrderCard> {
 class _ActiveOrderCard extends StatelessWidget {
   final BookingModel booking;
   final VoidCallback onTap;
-  final VoidCallback onChatTap;
 
-  const _ActiveOrderCard({
-    required this.booking,
-    required this.onTap,
-    required this.onChatTap,
-  });
-
-  static const List<String> statuses = [
-    'arrived_at_laundry',
-    'processing',
-    'ready_for_dropoff',
-    'delivery_in_progress',
-  ];
-
-  bool get _showChatButton =>
-      statuses.contains(booking.status.trim().toLowerCase());
+  const _ActiveOrderCard({required this.booking, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -671,7 +644,7 @@ class _ActiveOrderCard extends StatelessWidget {
               _InfoRow(
                 icon: Icons.location_on_outlined,
                 label: 'Dropoff',
-                value: booking.deliveryAddress,
+                value: booking.customerAddress,
               ),
               const SizedBox(height: 10),
               _InfoRow(
@@ -679,29 +652,6 @@ class _ActiveOrderCard extends StatelessWidget {
                 label: 'Amount',
                 value: 'GHS ${booking.totalPrice}',
               ),
-              if (_showChatButton) ...[
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: onChatTap,
-                    icon: const Icon(Icons.chat_bubble_outline_rounded),
-                    label: const Text(
-                      'Open Chat',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      elevation: 0,
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -734,6 +684,7 @@ class _OrderTopRow extends StatelessWidget {
         normalized == 'pickup_started' ||
         normalized == 'arrived_at_laundry' ||
         normalized == 'processing' ||
+        normalized == 'arrived_at_pickup' ||
         normalized == 'ready_for_dropoff' ||
         normalized == 'delivery_in_progress') {
       return const Color(0xFF10B981);
@@ -1115,13 +1066,14 @@ class OperatorOrdersService {
   static const List<String> _newStatuses = [
     'offered_to_laundry',
     'awaiting_laundry_acceptance',
+    'pending',
   ];
 
   static const List<String> _activeStatuses = [
-    'pending',
     'looking_for_pickup_rider',
     'pickup_rider_assigned',
     'pickup_started',
+    'arrived_at_pickup',
     'arrived_at_laundry',
     'processing',
     'ready_for_dropoff',
@@ -1221,6 +1173,8 @@ class OperatorOrdersService {
         _readString(contact['phoneNumber']) ?? currentUser.phoneNumber;
     final laundryPhotoUrl = _readString(profile['photoUrl']) ?? '';
     final laundryAddressLine = _readString(location['addressLine']) ?? '';
+    final latitude = _readString(location['latitude']);
+    final longitude = _readString(location['longitude']);
 
     final bookingRef = _firestore.collection('bookings').doc(bookingId);
 
@@ -1235,6 +1189,8 @@ class OperatorOrdersService {
       'laundrySnapshot.laundryPhone': laundryPhone,
       'laundrySnapshot.laundryPhotoUrl': laundryPhotoUrl,
       'laundrySnapshot.addressLine': laundryAddressLine,
+      'laundrySnapshot.latitude': latitude,
+      'laundrySnapshot.longitude': longitude,
     });
 
     await bookingRef.collection('status_history').add({

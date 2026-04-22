@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../screens/active_orders_screen.dart';
+import '../../screens/rider/active_orders_screen.dart';
 import '../../screens/business_info_screen.dart';
 import '../../screens/login_screen.dart';
 import '../../screens/main_navigation_screen.dart';
@@ -8,7 +8,7 @@ import '../../screens/laundry/operator_home_screen.dart';
 import '../../screens/payments_screen.dart';
 import '../../screens/profile_screen.dart';
 import '../../screens/laundry/requests_screen.dart';
-import '../../screens/rider_home_screen.dart';
+import '../../screens/rider/rider_home_screen.dart';
 import '../../screens/service_pricing_screen.dart';
 import '../../screens/settings_screen.dart';
 import '../../screens/signup_screen.dart';

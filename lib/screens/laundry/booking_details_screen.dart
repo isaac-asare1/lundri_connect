@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:lundri_connect/screens/chats_screen.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../models/booking_model.dart';
@@ -158,6 +159,70 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     }
   }
 
+  void _openCustomerChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          booking: widget.booking,
+          currentUserRole: 'laundry',
+          otherParticipantRole: 'customer',
+          otherParticipantId: widget.booking.customerId,
+        ),
+      ),
+    );
+  }
+
+  void _openPickupRiderChat() {
+    final riderId = widget.booking.pickupRiderId;
+    if (riderId == null || riderId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No pickup rider assigned yet.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          booking: widget.booking,
+          currentUserRole: 'laundry',
+          otherParticipantRole: 'rider',
+          otherParticipantId: riderId,
+        ),
+      ),
+    );
+  }
+
+  void _openDeliveryRiderChat() {
+    final riderId = widget.booking.deliveryRiderId;
+    if (riderId == null || riderId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No delivery rider assigned yet.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          booking: widget.booking,
+          currentUserRole: 'laundry',
+          otherParticipantRole: 'rider',
+          otherParticipantId: riderId,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final booking = widget.booking;
@@ -187,6 +252,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               booking: booking,
               status: _currentStatus,
               totalAmount: _currentTotalAmount,
+              onCustomerChat: _openCustomerChat,
+              onPickupRiderChat: _openPickupRiderChat,
+              onDeliveryRiderChat: _openDeliveryRiderChat,
             ),
             const SizedBox(height: 16),
 
@@ -350,7 +418,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                   const SizedBox(height: 12),
                   _AddressTile(
                     title: 'Dropoff Address',
-                    address: booking.deliveryAddress,
+                    address: booking.customerAddress,
                     icon: Icons.download_outlined,
                   ),
                 ],
@@ -616,11 +684,17 @@ class _HeroBookingCard extends StatelessWidget {
   final BookingModel booking;
   final String status;
   final double totalAmount;
+  final VoidCallback onCustomerChat;
+  final VoidCallback onPickupRiderChat;
+  final VoidCallback onDeliveryRiderChat;
 
   const _HeroBookingCard({
     required this.booking,
     required this.status,
     required this.totalAmount,
+    required this.onCustomerChat,
+    required this.onPickupRiderChat,
+    required this.onDeliveryRiderChat,
   });
 
   String _cleanText(String value, {String fallback = '—'}) {
@@ -630,6 +704,13 @@ class _HeroBookingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasPickupRider =
+        booking.pickupRiderId != null &&
+        booking.pickupRiderId!.trim().isNotEmpty;
+    final hasDeliveryRider =
+        booking.deliveryRiderId != null &&
+        booking.deliveryRiderId!.trim().isNotEmpty;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -677,24 +758,23 @@ class _HeroBookingCard extends StatelessWidget {
               color: AppColors.textSecondary,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Container(
-            width: MediaQuery.of(context).size.width * 0.85,
-            padding: const EdgeInsets.all(14),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FAFD),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: Colors.black.withOpacity(0.04)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
                 Container(
-                  height: 36,
-                  width: 36,
+                  height: 34,
+                  width: 34,
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     Icons.payments_outlined,
@@ -702,29 +782,115 @@ class _HeroBookingCard extends StatelessWidget {
                     color: AppColors.primary,
                   ),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Amount to pay',
-                  style: TextStyle(
-                    fontSize: 12.4,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Amount to pay',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 5),
                 Text(
                   'GHS ${totalAmount.toStringAsFixed(2)}',
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
-                    height: 1.3,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _ChatQuickButton(
+                  label: 'Customer',
+                  icon: Icons.person_outline_rounded,
+                  onTap: onCustomerChat,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ChatQuickButton(
+                  label: 'Pickup Rider',
+                  icon: Icons.delivery_dining_outlined,
+                  onTap: hasPickupRider ? onPickupRiderChat : null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ChatQuickButton(
+                  label: 'Delivery Rider',
+                  icon: Icons.local_shipping_outlined,
+                  onTap: hasDeliveryRider ? onDeliveryRiderChat : null,
+                ),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ChatQuickButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _ChatQuickButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDisabled = onTap == null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isDisabled
+              ? const Color(0xFFF3F4F6)
+              : AppColors.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDisabled
+                ? const Color(0xFFE5E7EB)
+                : AppColors.primary.withOpacity(0.14),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isDisabled ? AppColors.textSecondary : AppColors.primary,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.8,
+                fontWeight: FontWeight.w700,
+                color: isDisabled ? AppColors.textSecondary : AppColors.primary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

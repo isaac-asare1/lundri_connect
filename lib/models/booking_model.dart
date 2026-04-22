@@ -19,6 +19,8 @@ class BookingModel {
   final String? laundrySnapshotPhone;
   final String? laundrySnapshotPhotoUrl;
   final String? laundrySnapshotAddressLine;
+  final double? laundrySnapshotLatitude;
+  final double? laundrySnapshotLongitude;
 
   final String serviceType;
   final List<String> selectedAddOns;
@@ -31,7 +33,7 @@ class BookingModel {
   final double? pickupLatitude;
   final double? pickupLongitude;
 
-  final String deliveryAddress;
+  final String customerAddress;
   final String deliverySubtitle;
   final double? deliveryLatitude;
   final double? deliveryLongitude;
@@ -89,10 +91,12 @@ class BookingModel {
   final DateTime? requestedAt;
   final DateTime? acceptedAt;
   final DateTime? pickupStartedAt;
+  final DateTime? arrivedAtPickupAt;
   final DateTime? arrivedAtLaundryAt;
   final DateTime? processingStartedAt;
   final DateTime? readyForDropoffAt;
   final DateTime? deliveryStartedAt;
+  final DateTime? arrivedAtCustomerAt;
   final DateTime? completedAt;
   final DateTime? cancelledAt;
 
@@ -117,6 +121,8 @@ class BookingModel {
     required this.laundrySnapshotPhone,
     required this.laundrySnapshotPhotoUrl,
     required this.laundrySnapshotAddressLine,
+    required this.laundrySnapshotLatitude,
+    required this.laundrySnapshotLongitude,
     required this.serviceType,
     required this.selectedAddOns,
     required this.estimatedWeightKg,
@@ -125,7 +131,7 @@ class BookingModel {
     required this.pickupSubtitle,
     required this.pickupLatitude,
     required this.pickupLongitude,
-    required this.deliveryAddress,
+    required this.customerAddress,
     required this.deliverySubtitle,
     required this.deliveryLatitude,
     required this.deliveryLongitude,
@@ -173,10 +179,12 @@ class BookingModel {
     required this.requestedAt,
     required this.acceptedAt,
     required this.pickupStartedAt,
+    required this.arrivedAtPickupAt,
     required this.arrivedAtLaundryAt,
     required this.processingStartedAt,
     required this.readyForDropoffAt,
     required this.deliveryStartedAt,
+    required this.arrivedAtCustomerAt,
     required this.completedAt,
     required this.cancelledAt,
     required this.customerNotes,
@@ -186,7 +194,7 @@ class BookingModel {
 
   factory BookingModel.fromMap(Map<String, dynamic> map, String docId) {
     final pickupAddressMap = _asMap(map['pickupAddress']);
-    final deliveryAddressMap = _asMap(map['deliveryAddress']);
+    final customerAddressMap = _asMap(map['customerAddress']);
     final pricingMap = _asMap(map['pricing']);
     final paymentMap = _asMap(map['payment']);
     final pickupRiderMap = _asMap(map['pickupRider']);
@@ -195,6 +203,7 @@ class BookingModel {
     final laundryAssignmentMap = _asMap(map['laundryAssignment']);
     final laundryOfferMap = _asMap(map['laundryOffer']);
     final laundrySnapshotMap = _asMap(map['laundrySnapshot']);
+    final customerSnapshotMap = _asMap(map['customerSnapshot']);
     final searchMetaMap = _asMap(map['searchMeta']);
     final timelineMap = _asMap(map['timeline']);
 
@@ -207,10 +216,22 @@ class BookingModel {
       id: docId,
       bookingCode: _readString(map['bookingCode']),
 
-      customerId: _readString(map['customerId']),
-      customerName: _readString(map['customerName']),
-      customerPhone: _readString(map['customerPhone']),
-      customerPhotoUrl: _readString(map['customerPhotoUrl']),
+      customerId: _readString(
+        customerSnapshotMap['customerId'],
+        fallback: _readString(map['customerId']),
+      ),
+      customerName: _readString(
+        customerSnapshotMap['customerName'],
+        fallback: _readString(map['customerName']),
+      ),
+      customerPhone: _readString(
+        customerSnapshotMap['customerPhone'],
+        fallback: _readString(map['customerPhone']),
+      ),
+      customerPhotoUrl: _readString(
+        customerSnapshotMap['customerPhotoUrl'],
+        fallback: _readString(map['customerPhotoUrl']),
+      ),
 
       laundryId: _readNullableString(map['laundryId']),
       laundryName: _readNullableString(map['laundryName']),
@@ -230,6 +251,12 @@ class BookingModel {
       laundrySnapshotAddressLine: _readNullableString(
         laundrySnapshotMap['addressLine'],
       ),
+      laundrySnapshotLatitude: _readNullableDouble(
+        laundrySnapshotMap['latitude'],
+      ),
+      laundrySnapshotLongitude: _readNullableDouble(
+        laundrySnapshotMap['longitude'],
+      ),
 
       serviceType: _readString(map['serviceType']),
       selectedAddOns: _readStringList(map['selectedAddOns']),
@@ -242,11 +269,11 @@ class BookingModel {
       pickupLatitude: _readNullableDouble(pickupAddressMap['latitude']),
       pickupLongitude: _readNullableDouble(pickupAddressMap['longitude']),
 
-      deliveryAddress: _readString(deliveryAddressMap['address']),
-      deliverySubtitle: _readString(deliveryAddressMap['subtitle']),
-      deliveryLatitude: _readNullableDouble(deliveryAddressMap['latitude']),
-      deliveryLongitude: _readNullableDouble(deliveryAddressMap['longitude']),
-      isSameAsPickup: _readBool(deliveryAddressMap['isSameAsPickup']),
+      customerAddress: _readString(customerAddressMap['address']),
+      deliverySubtitle: _readString(customerAddressMap['subtitle']),
+      deliveryLatitude: _readNullableDouble(customerAddressMap['latitude']),
+      deliveryLongitude: _readNullableDouble(customerAddressMap['longitude']),
+      isSameAsPickup: _readBool(customerAddressMap['isSameAsPickup']),
 
       basePrice: _readInt(pricingMap['basePrice']),
       addOnsPrice: _readInt(pricingMap['addOnsPrice']),
@@ -316,10 +343,12 @@ class BookingModel {
       requestedAt: _parseTimestamp(timelineMap['requestedAt']),
       acceptedAt: _parseTimestamp(timelineMap['acceptedAt']),
       pickupStartedAt: _parseTimestamp(timelineMap['pickupStartedAt']),
+      arrivedAtPickupAt: _parseTimestamp(timelineMap['arrivedAtPickupAt']),
       arrivedAtLaundryAt: _parseTimestamp(timelineMap['arrivedAtLaundryAt']),
       processingStartedAt: _parseTimestamp(timelineMap['processingStartedAt']),
       readyForDropoffAt: _parseTimestamp(timelineMap['readyForDropoffAt']),
       deliveryStartedAt: _parseTimestamp(timelineMap['deliveryStartedAt']),
+      arrivedAtCustomerAt: _parseTimestamp(timelineMap['arrivedAtCustomerAt']),
       completedAt: _parseTimestamp(timelineMap['completedAt']),
       cancelledAt: _parseTimestamp(timelineMap['cancelledAt']),
 
@@ -331,6 +360,7 @@ class BookingModel {
   }
 
   bool get isIncomingOffer => status == 'offered_to_laundry';
+
   bool get isActiveLaundryOrder {
     switch (status) {
       case 'pending':

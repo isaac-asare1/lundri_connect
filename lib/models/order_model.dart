@@ -3,7 +3,7 @@ class OrderModel {
   final String customerName;
   final String customerPhone;
   final String pickupAddress;
-  final String deliveryAddress;
+  final String customerAddress;
   final String serviceType;
   final double totalAmount;
   final double laundryWeight;
@@ -17,7 +17,7 @@ class OrderModel {
     required this.customerName,
     required this.customerPhone,
     required this.pickupAddress,
-    required this.deliveryAddress,
+    required this.customerAddress,
     required this.serviceType,
     required this.totalAmount,
     required this.laundryWeight,
@@ -32,7 +32,7 @@ class OrderModel {
     String? customerName,
     String? customerPhone,
     String? pickupAddress,
-    String? deliveryAddress,
+    String? customerAddress,
     String? serviceType,
     double? totalAmount,
     double? laundryWeight,
@@ -46,7 +46,7 @@ class OrderModel {
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
       pickupAddress: pickupAddress ?? this.pickupAddress,
-      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      customerAddress: customerAddress ?? this.customerAddress,
       serviceType: serviceType ?? this.serviceType,
       totalAmount: totalAmount ?? this.totalAmount,
       laundryWeight: laundryWeight ?? this.laundryWeight,
@@ -63,7 +63,7 @@ class OrderModel {
       'customerName': customerName,
       'customerPhone': customerPhone,
       'pickupAddress': pickupAddress,
-      'deliveryAddress': deliveryAddress,
+      'customerAddress': customerAddress,
       'serviceType': serviceType,
       'totalAmount': totalAmount,
       'laundryWeight': laundryWeight,
@@ -80,7 +80,7 @@ class OrderModel {
       customerName: map['customerName'] as String? ?? '',
       customerPhone: map['customerPhone'] as String? ?? '',
       pickupAddress: map['pickupAddress'] as String? ?? '',
-      deliveryAddress: map['deliveryAddress'] as String? ?? '',
+      customerAddress: map['customerAddress'] as String? ?? '',
       serviceType: map['serviceType'] as String? ?? '',
       totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0,
       laundryWeight: (map['laundryWeight'] as num?)?.toDouble() ?? 0,
