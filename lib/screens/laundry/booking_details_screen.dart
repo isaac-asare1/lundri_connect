@@ -137,12 +137,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Booking marked as completed.'),
+          content: Text(
+            'wash completed. You can now request for a delivery rider.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
 
-      Navigator.pop(context, true);
+      Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
 
@@ -666,15 +668,15 @@ class BookingDetailsService {
     final bookingRef = _firestore.collection('bookings').doc(bookingId);
 
     await bookingRef.update({
-      'status': 'completed',
+      'status': 'processing',
       'timeline.deliveredAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
     await bookingRef.collection('status_history').add({
-      'status': 'completed',
+      'status': 'processing',
       'title': 'Booking Completed',
-      'description': 'The booking has been marked as completed.',
+      'description': 'The booking has been maked as ready for drop off.',
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -701,6 +703,27 @@ class _HeroBookingCard extends StatelessWidget {
     final text = value.trim();
     return text.isEmpty ? fallback : text;
   }
+
+  static const pickUpRiderStatus = [
+    'pickup_rider_assigned',
+    'pickup_started',
+    'arrived_at_pickup',
+  ];
+  static const deliveryRiderStatus = [
+    'ready_for_dropoff',
+    'delivery_in_progress',
+  ];
+  static const customerStatus = [
+    'arrived_at_laundry',
+    'processing',
+    'ready_for_dropoff',
+    'delivery_in_progress',
+    'completed',
+  ];
+
+  bool get showPickUpRiderChatButton => pickUpRiderStatus.contains(status);
+  bool get showDeliverypRiderChatButton => deliveryRiderStatus.contains(status);
+  bool get showCustomerChatButton => customerStatus.contains(status);
 
   @override
   Widget build(BuildContext context) {
@@ -804,32 +827,37 @@ class _HeroBookingCard extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 10),
+          Center(child: Text("Message")),
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: _ChatQuickButton(
-                  label: 'Customer',
-                  icon: Icons.person_outline_rounded,
-                  onTap: onCustomerChat,
+              if (showCustomerChatButton)
+                Expanded(
+                  child: _ChatQuickButton(
+                    label: 'Customer',
+                    icon: Icons.chat_bubble_outline,
+                    onTap: onCustomerChat,
+                  ),
                 ),
-              ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _ChatQuickButton(
-                  label: 'Pickup Rider',
-                  icon: Icons.delivery_dining_outlined,
-                  onTap: hasPickupRider ? onPickupRiderChat : null,
+              if (showPickUpRiderChatButton)
+                Expanded(
+                  child: _ChatQuickButton(
+                    label: 'Pickup Rider',
+                    icon: Icons.chat_bubble_outline,
+                    onTap: hasPickupRider ? onPickupRiderChat : null,
+                  ),
                 ),
-              ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _ChatQuickButton(
-                  label: 'Delivery Rider',
-                  icon: Icons.local_shipping_outlined,
-                  onTap: hasDeliveryRider ? onDeliveryRiderChat : null,
+              if (showDeliverypRiderChatButton)
+                Expanded(
+                  child: _ChatQuickButton(
+                    label: 'Delivery Rider',
+                    icon: Icons.chat_bubble_outline,
+                    onTap: hasDeliveryRider ? onDeliveryRiderChat : null,
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -839,7 +867,7 @@ class _HeroBookingCard extends StatelessWidget {
 }
 
 class _ChatQuickButton extends StatelessWidget {
-  final String label;
+  final String label; // e.g. "Chat Customer"
   final IconData icon;
   final VoidCallback? onTap;
 
@@ -855,42 +883,48 @@ class _ChatQuickButton extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: isDisabled
-              ? const Color(0xFFF3F4F6)
-              : AppColors.primary.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDisabled
-                ? const Color(0xFFE5E7EB)
-                : AppColors.primary.withOpacity(0.14),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ICON BOX
+          Container(
+            padding: EdgeInsets.only(top: 2),
+            width: 44,
+            height: 26,
+            decoration: BoxDecoration(
+              color: isDisabled
+                  ? const Color(0xFFE5E7EB)
+                  : AppColors.primary.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
               icon,
-              size: 18,
+              size: 22,
               color: isDisabled ? AppColors.textSecondary : AppColors.primary,
             ),
-            const SizedBox(height: 6),
-            Text(
+          ),
+
+          const SizedBox(height: 6),
+
+          // DESCRIPTION UNDER ICON
+          SizedBox(
+            width: 80,
+            child: Text(
               label,
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11.8,
-                fontWeight: FontWeight.w700,
-                color: isDisabled ? AppColors.textSecondary : AppColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDisabled
+                    ? AppColors.textSecondary
+                    : AppColors.textPrimary,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
