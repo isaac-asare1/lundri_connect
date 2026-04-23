@@ -5,13 +5,28 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
-import 'rider/active_orders_screen.dart';
-import 'profile_screen.dart';
 import 'laundry/requests_screen.dart';
+import 'profile_screen.dart';
+import 'rider/active_orders_screen.dart';
 import 'rider/rider_home_screen.dart';
 
-class MainNavigationScreen extends StatelessWidget {
+class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
+
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<NavigationProvider>().setIndex(0);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,14 +88,6 @@ class MainNavigationScreen extends StatelessWidget {
     final int safeIndex = navigationProvider.currentIndex >= items.length
         ? 0
         : navigationProvider.currentIndex;
-
-    if (safeIndex != navigationProvider.currentIndex) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          navigationProvider.setIndex(0);
-        }
-      });
-    }
 
     return Scaffold(
       body: IndexedStack(index: safeIndex, children: screens),

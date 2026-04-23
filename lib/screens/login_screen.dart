@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:lundri_connect/screens/main_navigation_screen.dart';
+import 'package:lundri_connect/widgets/loading_widget.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants/app_colors.dart';
@@ -6,6 +8,7 @@ import '../core/routes/route_names.dart';
 import '../core/utils/helpers.dart';
 import '../core/utils/validators.dart';
 import '../providers/auth_provider.dart';
+import '../providers/navigation_provider.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 
@@ -17,6 +20,48 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  late Future<String?> _bootstrapFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrapFuture = _bootstrapSession();
+  }
+
+  Future<String?> _bootstrapSession() async {
+    final authProvider = context.read<AuthProvider>();
+    return authProvider.resolveStoredRoleForCurrentUser();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _bootstrapFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: LoadingWidget()));
+        }
+
+        final restoredRole = snapshot.data;
+
+        if (restoredRole != null) {
+          return const MainNavigationScreen();
+        }
+
+        return const LoginUI();
+      },
+    );
+  }
+}
+
+class LoginUI extends StatefulWidget {
+  const LoginUI({super.key});
+
+  @override
+  State<LoginUI> createState() => _LoginUIState();
+}
+
+class _LoginUIState extends State<LoginUI> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -27,6 +72,15 @@ class _LoginScreenState extends State<LoginScreen> {
   String get _selectedRole => _loginAsRider ? 'rider' : 'laundry';
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AuthProvider>().setSelectedRole(_selectedRole);
+    });
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
@@ -34,6 +88,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    FocusScope.of(context).unfocus();
+
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) return;
 
@@ -57,10 +113,13 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (!mounted) return;
+    context.read<NavigationProvider>().setIndex(0);
 
-    Helpers.showSnackBar(context, 'Login successful');
-    Navigator.pushReplacementNamed(context, RouteNames.mainNavigation);
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      RouteNames.mainNavigation,
+      (route) => false,
+    );
   }
 
   @override
@@ -110,7 +169,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 20),
-
                           CustomTextField(
                             controller: _emailController,
                             hintText: 'Enter email address',
@@ -121,7 +179,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             textInputAction: TextInputAction.next,
                           ),
                           const SizedBox(height: 16),
-
                           CustomTextField(
                             controller: _passwordController,
                             hintText: 'Enter your password',
@@ -144,7 +201,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             textInputAction: TextInputAction.done,
                           ),
                           const SizedBox(height: 16),
-
                           _RoleSwitchCard(
                             value: _loginAsRider,
                             onChanged: (value) {
@@ -152,15 +208,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _loginAsRider = value;
                               });
 
-                              final role = _loginAsRider ? "rider" : "laundry";
-                              context.watch<AuthProvider>().setSelectedRole(
+                              final role = _loginAsRider ? 'rider' : 'laundry';
+                              context.read<AuthProvider>().setSelectedRole(
                                 role,
                               );
                             },
                           ),
-
                           const SizedBox(height: 22),
-
                           CustomButton(
                             text: 'Log In',
                             onPressed: authProvider.isLoading
@@ -168,9 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : _handleLogin,
                             isLoading: authProvider.isLoading,
                           ),
-
                           const SizedBox(height: 22),
-
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -183,12 +235,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               GestureDetector(
-                                onTap: () {
-                                  Navigator.pushNamed(
-                                    context,
-                                    RouteNames.signup,
-                                  );
-                                },
+                                onTap: authProvider.isLoading
+                                    ? null
+                                    : () {
+                                        Navigator.pushNamed(
+                                          context,
+                                          RouteNames.signup,
+                                        );
+                                      },
                                 child: const Text(
                                   'Create Account',
                                   style: TextStyle(

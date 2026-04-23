@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lundri_connect/core/utils/helpers.dart';
+import 'package:lundri_connect/screens/login_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/routes/route_names.dart';
@@ -142,15 +144,24 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ProfileMenuTile(
+            isLoading:
+                context.watch<UserProvider>().isUpdatingOnlineStatus ||
+                context.watch<AuthProvider>().isLoading,
             icon: Icons.logout_rounded,
             title: 'Log Out',
             subtitle: 'Sign out of your account',
             iconColor: AppColors.error,
             onTap: () async {
-              try {
-                await context.read<AuthProvider>().logout();
+              final userProvider = context.read<UserProvider>();
+              final authProvider = context.read<AuthProvider>();
 
-                context.read<UserProvider>().clearUser();
+              try {
+                await userProvider.goOfflineBeforeLogout(
+                  role: authProvider.selectedRole,
+                );
+
+                await authProvider.logout();
+                userProvider.clearUser();
 
                 if (!context.mounted) return;
 

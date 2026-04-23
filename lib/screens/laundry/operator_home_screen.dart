@@ -1,14 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:lundri_connect/screens/rider/active_orders_screen.dart';
-import 'package:lundri_connect/screens/payments_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../models/booking_model.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/loading_widget.dart';
-import 'requests_screen.dart';
 
 class OperatorHomeScreen extends StatefulWidget {
   const OperatorHomeScreen({super.key});

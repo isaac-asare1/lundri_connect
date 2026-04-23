@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -8,19 +9,74 @@ class AuthProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   String _errorMessage = '';
+  String _selectedRole = 'laundry';
 
   bool get isLoading => _isLoading;
   String get errorMessage => _errorMessage;
   User? get currentUser => _auth.currentUser;
-
-  String _selectedRole = 'laundry';
-
   String get selectedRole => _selectedRole;
 
   void setSelectedRole(String role) {
     if (_selectedRole == role) return;
     _selectedRole = role;
     notifyListeners();
+  }
+
+  Future<void> cacheUserRole({
+    required String uid,
+    required String role,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('cached_uid', uid);
+    await prefs.setString('user_role', role);
+  }
+
+  Future<void> clearCachedUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('cached_uid');
+    await prefs.remove('user_role');
+  }
+
+  Future<String?> _getUserRoleFromFirestore(String uid) async {
+    final riderDoc = await _firestore.collection('riders').doc(uid).get();
+    if (riderDoc.exists) return 'rider';
+
+    final laundryDoc = await _firestore.collection('laundries').doc(uid).get();
+    if (laundryDoc.exists) return 'laundry';
+
+    return null;
+  }
+
+  Future<String?> resolveStoredRoleForCurrentUser() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final cachedUid = prefs.getString('cached_uid');
+    final cachedRole = prefs.getString('user_role');
+
+    if (cachedUid == user.uid &&
+        cachedRole != null &&
+        cachedRole.trim().isNotEmpty) {
+      _selectedRole = cachedRole;
+      notifyListeners();
+      return cachedRole;
+    }
+
+    final firestoreRole = await _getUserRoleFromFirestore(user.uid);
+
+    if (firestoreRole != null) {
+      _selectedRole = firestoreRole;
+      await cacheUserRole(uid: user.uid, role: firestoreRole);
+      notifyListeners();
+      return firestoreRole;
+    }
+
+    await clearCachedUserRole();
+    await _auth.signOut();
+    _selectedRole = 'laundry';
+    notifyListeners();
+    return null;
   }
 
   Future<bool> signup({
@@ -74,6 +130,8 @@ class AuthProvider extends ChangeNotifier {
       }
 
       _selectedRole = role;
+      await cacheUserRole(uid: user.uid, role: role);
+      notifyListeners();
 
       return true;
     } on FirebaseAuthException catch (e) {
@@ -82,6 +140,90 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       _errorMessage = 'Something went wrong. Please try again.';
       return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> signIn({
+    required String email,
+    required String password,
+    required String role,
+  }) async {
+    _setLoading(true);
+    _errorMessage = '';
+
+    try {
+      await clearCachedUserRole();
+
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      final uid = credential.user?.uid;
+
+      if (uid == null) {
+        _errorMessage = 'Authentication failed.';
+        await _auth.signOut();
+        return false;
+      }
+
+      late final String collectionName;
+      switch (role) {
+        case 'rider':
+          collectionName = 'riders';
+          break;
+        case 'laundry':
+          collectionName = 'laundries';
+          break;
+        default:
+          _errorMessage = 'Invalid role selected.';
+          await _auth.signOut();
+          return false;
+      }
+
+      final doc = await _firestore.collection(collectionName).doc(uid).get();
+
+      if (!doc.exists) {
+        await clearCachedUserRole();
+        await _auth.signOut();
+        _selectedRole = 'laundry';
+        _errorMessage = 'You are not signed up as a $role.';
+        notifyListeners();
+        return false;
+      }
+
+      _selectedRole = role;
+      await cacheUserRole(uid: uid, role: role);
+      notifyListeners();
+
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _errorMessage = _mapFirebaseAuthError(e);
+      return false;
+    } catch (e) {
+      _errorMessage = 'Something went wrong. Please try again.';
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> logout() async {
+    _setLoading(true);
+    await Future.delayed(const Duration(seconds: 2));
+
+    try {
+      await clearCachedUserRole();
+      await _auth.signOut();
+      _selectedRole = 'laundry';
+      _errorMessage = '';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to log out. Please try again.';
+      notifyListeners();
+      rethrow;
     } finally {
       _setLoading(false);
     }
@@ -113,79 +255,6 @@ class AuthProvider extends ChangeNotifier {
     );
 
     await _firestore.collection('laundries').doc(uid).set(laundryData);
-  }
-
-  /// =========================
-  /// ✅ SIGN IN
-  /// =========================
-  Future<bool> signIn({
-    required String email,
-    required String password,
-    required String role,
-  }) async {
-    _setLoading(true);
-    _errorMessage = '';
-
-    try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-
-      final uid = credential.user?.uid;
-
-      if (uid == null) {
-        _errorMessage = "Authentication failed.";
-        return false;
-      }
-
-      String collectionName;
-
-      switch (role) {
-        case 'rider':
-          collectionName = 'riders';
-          break;
-        case 'laundry':
-          collectionName = 'laundries';
-          break;
-        default:
-          throw Exception("Invalid role");
-      }
-
-      final doc = await _firestore.collection(collectionName).doc(uid).get();
-
-      if (!doc.exists) {
-        await _auth.signOut();
-        _errorMessage = "You are not signed up as a $role.";
-        return false;
-      }
-
-      _selectedRole = role;
-
-      return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapFirebaseAuthError(e);
-      return false;
-    } catch (e) {
-      _errorMessage = 'Something went wrong. Please try again.';
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<void> logout() async {
-    _setLoading(true);
-
-    try {
-      await _auth.signOut();
-      _errorMessage = '';
-    } catch (e) {
-      _errorMessage = 'Failed to log out. Please try again.';
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
   }
 
   String _mapFirebaseAuthError(FirebaseAuthException e) {
@@ -221,11 +290,8 @@ class AuthProvider extends ChangeNotifier {
     return {
       'id': uid,
       'role': 'rider',
-
       'profile': {'fullName': fullName, 'photoUrl': ''},
-
       'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
-
       'location': {
         'addressLine': '',
         'latitude': null,
@@ -234,7 +300,6 @@ class AuthProvider extends ChangeNotifier {
         'landmark': '',
         'lastLocationUpdatedAt': null,
       },
-
       'business': {
         'isApproved': false,
         'isOnline': false,
@@ -246,11 +311,8 @@ class AuthProvider extends ChangeNotifier {
         'currentLaundryIds': <String>[],
         'currentCustomerIds': <String>[],
       },
-
       'vehicle': {'type': '', 'make': '', 'color': '', 'plateNumber': ''},
-
       'ratings': {'rating': 0.0, 'totalReviews': 0},
-
       'stats': {
         'totalRequestsReceived': 0,
         'acceptedRequests': 0,
@@ -259,13 +321,11 @@ class AuthProvider extends ChangeNotifier {
         'completedDeliveries': 0,
         'cancelledDeliveries': 0,
       },
-
       'chat': {
         'lastSeenAt': null,
         'fcmTokens': <String, bool>{},
         'fcmUpdatedAt': null,
       },
-
       'timestamps': {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -283,7 +343,6 @@ class AuthProvider extends ChangeNotifier {
     return {
       'id': uid,
       'role': 'laundry',
-
       'profile': {
         'name': laundryName,
         'description': '',
@@ -291,21 +350,16 @@ class AuthProvider extends ChangeNotifier {
         'logoUrl': '',
         'coverImageUrl': '',
       },
-
       'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
-
       'location': {
         'addressLine': '',
-        // Temporary dummy coordinates near Sowutuom for testing.
         'latitude': 5.6396,
         'longitude': -0.2525,
         'digitalAddress': '',
         'landmark': '',
         'serviceRadiusKm': 20,
       },
-
       'business': {
-        // Must be true for the Cloud Function query.
         'isApproved': true,
         'isFeatured': false,
         'isOnline': true,
@@ -315,8 +369,6 @@ class AuthProvider extends ChangeNotifier {
         'currentOrderCount': 0,
         'estimatedTurnaroundText': 'Same day',
       },
-
-      // The Cloud Function reads this at the root level.
       'openingHours': {
         'mon': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
         'tue': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
@@ -326,12 +378,8 @@ class AuthProvider extends ChangeNotifier {
         'sat': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
         'sun': {'isOpen': true, 'open': '00:00', 'close': '23:59'},
       },
-
       'services': {'washFold': true, 'washIron': true},
-
-      // Leave empty for now so every booking passes the add-on check.
       'supportedAddOns': <String>[],
-
       'pricing': {
         'currency': 'GHS',
         'basePricePerKg': 18,
@@ -341,19 +389,14 @@ class AuthProvider extends ChangeNotifier {
         'minimumOrderPrice': 0,
         'pricingNotes': '',
       },
-
       'ratings': {'rating': 0.0, 'totalReviews': 0},
-
       'stats': {'totalOrders': 0, 'completedOrders': 0, 'cancelledOrders': 0},
-
       'owner': {'fullName': laundryName, 'phoneNumber': '', 'photoUrl': ''},
-
       'chat': {
         'lastSeenAt': null,
         'fcmTokens': <String, bool>{},
         'fcmUpdatedAt': null,
       },
-
       'timestamps': {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),

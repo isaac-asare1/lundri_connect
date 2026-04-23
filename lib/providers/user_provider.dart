@@ -14,21 +14,34 @@ class UserProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore;
 
   static const String _laundriesCollection = 'laundries';
+  static const String _ridersCollection = 'riders';
 
   AppUserModel? _currentUser;
   BusinessInfoModel? _businessInfo;
   bool _isLoading = false;
   String? _errorMessage;
   bool _isOnline = false;
+  bool _isUpdatingOnlineStatus = false;
 
   AppUserModel? get currentUser => _currentUser;
   BusinessInfoModel? get businessInfo => _businessInfo;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isOnline => _isOnline;
+  bool get isUpdatingOnlineStatus => _isUpdatingOnlineStatus;
+
+  bool get isRider => _currentUser?.role == 'rider';
+  bool get isLaundry => _currentUser?.role == 'laundry';
 
   void _setLoading(bool value) {
+    if (_isLoading == value) return;
     _isLoading = value;
+    notifyListeners();
+  }
+
+  void _setOnlineStatusLoading(bool value) {
+    if (_isUpdatingOnlineStatus == value) return;
+    _isUpdatingOnlineStatus = value;
     notifyListeners();
   }
 
@@ -47,75 +60,40 @@ class UserProvider extends ChangeNotifier {
         return;
       }
 
-      final DocumentSnapshot<Map<String, dynamic>> doc = await _firestore
+      final DocumentSnapshot<Map<String, dynamic>> laundryDoc = await _firestore
           .collection(_laundriesCollection)
           .doc(firebaseUser.uid)
           .get();
 
-      if (!doc.exists) {
-        _currentUser = AppUserModel(
-          id: firebaseUser.uid,
-          fullName: firebaseUser.displayName ?? '',
-          email: firebaseUser.email ?? '',
-          phoneNumber: firebaseUser.phoneNumber ?? '',
-          role: 'laundry',
-          createdAt: DateTime.now(),
-          isOnline: false,
-          addressLine: '',
-        );
-
-        _businessInfo = null;
-        _isOnline = false;
-        _errorMessage = 'Laundry profile not found in Firestore.';
+      if (laundryDoc.exists) {
+        _loadLaundryFromDoc(firebaseUser, laundryDoc);
         return;
       }
 
-      final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+      final DocumentSnapshot<Map<String, dynamic>> riderDoc = await _firestore
+          .collection(_ridersCollection)
+          .doc(firebaseUser.uid)
+          .get();
 
-      final Map<String, dynamic> profile = _asMap(data['profile']);
-      final Map<String, dynamic> contact = _asMap(data['contact']);
-      final Map<String, dynamic> location = _asMap(data['location']);
-      final Map<String, dynamic> business = _asMap(data['business']);
-      final Map<String, dynamic> owner = _asMap(data['owner']);
-      final Map<String, dynamic> timestamps = _asMap(data['timestamps']);
-
-      _isOnline = business['isOnline'] == true;
+      if (riderDoc.exists) {
+        _loadRiderFromDoc(firebaseUser, riderDoc);
+        return;
+      }
 
       _currentUser = AppUserModel(
         id: firebaseUser.uid,
-        fullName:
-            _readString(owner['fullName']) ??
-            _readString(profile['name']) ??
-            firebaseUser.displayName ??
-            '',
-        email: _readString(contact['email']) ?? firebaseUser.email ?? '',
-        phoneNumber:
-            _readString(contact['phoneNumber']) ??
-            _readString(owner['phoneNumber']) ??
-            firebaseUser.phoneNumber ??
-            '',
-        role: _readString(data['role']) ?? 'laundry',
-        createdAt:
-            _parseDateTime(timestamps['createdAt']) ??
-            _parseDateTime(data['createdAt']) ??
-            DateTime.now(),
-        isOnline: _isOnline,
-        addressLine: _readString(location['addressLine']) ?? '',
+        fullName: firebaseUser.displayName ?? '',
+        email: firebaseUser.email ?? '',
+        phoneNumber: firebaseUser.phoneNumber ?? '',
+        role: 'unknown',
+        createdAt: DateTime.now(),
+        isOnline: false,
+        addressLine: '',
       );
 
-      _businessInfo = BusinessInfoModel(
-        businessName: _readString(profile['name']) ?? '',
-        ownerName: _readString(owner['fullName']) ?? '',
-        phoneNumber:
-            _readString(contact['phoneNumber']) ??
-            _readString(owner['phoneNumber']) ??
-            '',
-        email: _readString(contact['email']) ?? '',
-        address: _readString(location['addressLine']) ?? '',
-        description: _readString(profile['description']) ?? '',
-        pickupAvailable: false,
-        deliveryAvailable: true,
-      );
+      _businessInfo = null;
+      _isOnline = false;
+      _errorMessage = 'User profile not found in Firestore.';
     } catch (e) {
       _currentUser = null;
       _businessInfo = null;
@@ -126,59 +104,240 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateAvailability(bool isOnline) async {
-    if (_currentUser == null) return;
+  void _loadLaundryFromDoc(
+    User firebaseUser,
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+
+    final Map<String, dynamic> profile = _asMap(data['profile']);
+    final Map<String, dynamic> contact = _asMap(data['contact']);
+    final Map<String, dynamic> location = _asMap(data['location']);
+    final Map<String, dynamic> business = _asMap(data['business']);
+    final Map<String, dynamic> owner = _asMap(data['owner']);
+    final Map<String, dynamic> timestamps = _asMap(data['timestamps']);
+
+    _isOnline = business['isOnline'] == true;
+
+    _currentUser = AppUserModel(
+      id: firebaseUser.uid,
+      fullName:
+          _readString(owner['fullName']) ??
+          _readString(profile['name']) ??
+          firebaseUser.displayName ??
+          '',
+      email: _readString(contact['email']) ?? firebaseUser.email ?? '',
+      phoneNumber:
+          _readString(contact['phoneNumber']) ??
+          _readString(owner['phoneNumber']) ??
+          firebaseUser.phoneNumber ??
+          '',
+      role: 'laundry',
+      createdAt:
+          _parseDateTime(timestamps['createdAt']) ??
+          _parseDateTime(data['createdAt']) ??
+          DateTime.now(),
+      isOnline: _isOnline,
+      addressLine: _readString(location['addressLine']) ?? '',
+    );
+
+    _businessInfo = BusinessInfoModel(
+      businessName: _readString(profile['name']) ?? '',
+      ownerName: _readString(owner['fullName']) ?? '',
+      phoneNumber:
+          _readString(contact['phoneNumber']) ??
+          _readString(owner['phoneNumber']) ??
+          '',
+      email: _readString(contact['email']) ?? '',
+      address: _readString(location['addressLine']) ?? '',
+      description: _readString(profile['description']) ?? '',
+      pickupAvailable: false,
+      deliveryAvailable: true,
+    );
+  }
+
+  void _loadRiderFromDoc(
+    User firebaseUser,
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+
+    final Map<String, dynamic> profile = _asMap(data['profile']);
+    final Map<String, dynamic> contact = _asMap(data['contact']);
+    final Map<String, dynamic> location = _asMap(data['location']);
+    final Map<String, dynamic> business = _asMap(data['business']);
+    final Map<String, dynamic> timestamps = _asMap(data['timestamps']);
+
+    _isOnline = business['isOnline'] == true;
+
+    _currentUser = AppUserModel(
+      id: firebaseUser.uid,
+      fullName:
+          _readString(profile['fullName']) ?? firebaseUser.displayName ?? '',
+      email: _readString(contact['email']) ?? firebaseUser.email ?? '',
+      phoneNumber:
+          _readString(contact['phoneNumber']) ?? firebaseUser.phoneNumber ?? '',
+      role: 'rider',
+      createdAt:
+          _parseDateTime(timestamps['createdAt']) ??
+          _parseDateTime(data['createdAt']) ??
+          DateTime.now(),
+      isOnline: _isOnline,
+      addressLine: _readString(location['addressLine']) ?? '',
+    );
+
+    _businessInfo = null;
+  }
+
+  Future<void> setLaundryOnlineStatus(
+    bool isOnline, {
+    bool syncAcceptanceFlags = true,
+  }) async {
+    if (_currentUser == null || _isUpdatingOnlineStatus || !isLaundry) return;
 
     _errorMessage = null;
+    _setOnlineStatusLoading(true);
 
     try {
+      final Map<String, dynamic> updates = {
+        'business.isOnline': isOnline,
+        'timestamps.updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (syncAcceptanceFlags) {
+        updates['business.acceptingOrders'] = isOnline;
+        updates['business.acceptingAutoAssignments'] = isOnline;
+      }
+
       await _firestore
           .collection(_laundriesCollection)
           .doc(_currentUser!.id)
+          .update(updates);
+
+      _isOnline = isOnline;
+      _currentUser = _currentUser!.copyWith(isOnline: isOnline);
+
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to update laundry online status: $e';
+      notifyListeners();
+      rethrow;
+    } finally {
+      _setOnlineStatusLoading(false);
+    }
+  }
+
+  Future<void> setRiderOnlineStatus(bool isOnline) async {
+    if (_currentUser == null || _isUpdatingOnlineStatus || !isRider) return;
+
+    _errorMessage = null;
+    _setOnlineStatusLoading(true);
+
+    try {
+      await _firestore
+          .collection(_ridersCollection)
+          .doc(_currentUser!.id)
           .update({
             'business.isOnline': isOnline,
+            'business.acceptingAssignments': isOnline,
+            'business.availabilityStatus': isOnline ? 'available' : 'offline',
             'timestamps.updatedAt': FieldValue.serverTimestamp(),
           });
 
       _isOnline = isOnline;
       _currentUser = _currentUser!.copyWith(isOnline: isOnline);
+
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Failed to update availability: $e';
+      _errorMessage = 'Failed to update rider online status: $e';
       notifyListeners();
+      rethrow;
+    } finally {
+      _setOnlineStatusLoading(false);
+    }
+  }
+
+  Future<void> updateAvailability(bool isOnline) async {
+    if (isLaundry) {
+      await setLaundryOnlineStatus(isOnline);
+      return;
+    }
+
+    if (isRider) {
+      await setRiderOnlineStatus(isOnline);
     }
   }
 
   Future<void> updateOnlineStatus(bool isOnline) async {
-    if (_currentUser == null) return;
+    if (isLaundry) {
+      await setLaundryOnlineStatus(isOnline);
+      return;
+    }
 
-    _errorMessage = null;
-
-    try {
-      await _firestore
-          .collection(_laundriesCollection)
-          .doc(_currentUser!.id)
-          .update({
-            'business.isOnline': isOnline,
-            'timestamps.updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      _isOnline = isOnline;
-      _currentUser = _currentUser!.copyWith(isOnline: isOnline);
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to update online status: $e';
-      notifyListeners();
-      rethrow;
+    if (isRider) {
+      await setRiderOnlineStatus(isOnline);
     }
   }
 
   Future<void> toggleOnlineStatus() async {
-    await updateOnlineStatus(!_isOnline);
+    if (_currentUser == null) return;
+
+    if (isLaundry) {
+      await setLaundryOnlineStatus(!_isOnline);
+      return;
+    }
+
+    if (isRider) {
+      await setRiderOnlineStatus(!_isOnline);
+    }
+  }
+
+  Future<void> goOfflineBeforeLogout({String? role}) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final String effectiveRole = (role ?? _currentUser?.role ?? '')
+        .trim()
+        .toLowerCase();
+
+    try {
+      if (effectiveRole == 'rider') {
+        await _firestore.collection(_ridersCollection).doc(user.uid).update({
+          'business.acceptingAssignments': false,
+          'business.isOnline': false,
+          'business.availabilityStatus': 'offline',
+          'timestamps.updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        _isOnline = false;
+        if (_currentUser != null) {
+          _currentUser = _currentUser!.copyWith(isOnline: false);
+        }
+        notifyListeners();
+        return;
+      }
+
+      if (effectiveRole == 'laundry') {
+        await _firestore.collection(_laundriesCollection).doc(user.uid).update({
+          'business.isOnline': false,
+          'business.acceptingOrders': false,
+          'business.acceptingAutoAssignments': false,
+          'timestamps.updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        _isOnline = false;
+        if (_currentUser != null) {
+          _currentUser = _currentUser!.copyWith(isOnline: false);
+        }
+        notifyListeners();
+      }
+    } catch (_) {
+      // Keep logout flow from crashing if Firestore update fails.
+    }
   }
 
   Future<void> updateBusinessInfo(BusinessInfoModel businessInfo) async {
-    if (_currentUser == null) return;
+    if (_currentUser == null || !isLaundry) return;
 
     _errorMessage = null;
 
@@ -232,7 +391,7 @@ class UserProvider extends ChangeNotifier {
     double? longitude,
     int? serviceRadiusKm,
   }) async {
-    if (_currentUser == null) return;
+    if (_currentUser == null || !isLaundry) return;
 
     _errorMessage = null;
 
@@ -295,7 +454,7 @@ class UserProvider extends ChangeNotifier {
     num? minimumOrderPrice,
     String? pricingNotes,
   }) async {
-    if (_currentUser == null) return;
+    if (_currentUser == null || !isLaundry) return;
 
     _errorMessage = null;
 
@@ -344,7 +503,7 @@ class UserProvider extends ChangeNotifier {
     String? estimatedTurnaroundText,
     Map<String, dynamic>? openingHours,
   }) async {
-    if (_currentUser == null) return;
+    if (_currentUser == null || !isLaundry) return;
 
     _errorMessage = null;
 
@@ -361,6 +520,9 @@ class UserProvider extends ChangeNotifier {
       }
       if (isOnline != null) {
         updates['business.isOnline'] = isOnline;
+        updates['business.acceptingOrders'] = isOnline;
+        updates['business.acceptingAutoAssignments'] = isOnline;
+
         _isOnline = isOnline;
         _currentUser = _currentUser!.copyWith(isOnline: isOnline);
       }
@@ -375,7 +537,7 @@ class UserProvider extends ChangeNotifier {
             .trim();
       }
       if (openingHours != null) {
-        updates['business.openingHours'] = openingHours;
+        updates['openingHours'] = openingHours;
       }
 
       await _firestore
@@ -401,6 +563,7 @@ class UserProvider extends ChangeNotifier {
     _businessInfo = null;
     _errorMessage = null;
     _isOnline = false;
+    _isUpdatingOnlineStatus = false;
     notifyListeners();
   }
 
