@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/navigation_provider.dart';
-import 'providers/orders_provider.dart';
 import 'providers/payments_provider.dart';
 import 'providers/user_provider.dart';
 
@@ -22,7 +21,6 @@ void main() async {
       providers: [
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<UserProvider>(create: (_) => UserProvider()),
-        ChangeNotifierProvider<OrdersProvider>(create: (_) => OrdersProvider()),
         ChangeNotifierProvider<PaymentsProvider>(
           create: (_) => PaymentsProvider(),
         ),

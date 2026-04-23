@@ -419,7 +419,7 @@ class RiderTaskDetailsScreen extends StatelessWidget {
             FieldValue.serverTimestamp();
       } else if (booking.status == 'delivery_in_progress' &&
           deliveryPickupArrivedAt != null) {
-        update['status'] = 'arrived_at_customer';
+        update['status'] = 'completed';
         update['timeline.arrivedAtCustomerAt'] = FieldValue.serverTimestamp();
       } else if (booking.status == 'arrived_at_customer') {
         update['status'] = 'completed';
@@ -737,6 +737,7 @@ class _StageCardState extends State<_StageCard> {
             ),
           ),
           const SizedBox(height: 18),
+
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
@@ -770,46 +771,172 @@ class _StageCardState extends State<_StageCard> {
                     ),
             ),
           ),
+
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: widget.isActionComplete || _navigating || _confirming
-                  ? null
-                  : () async {
-                      setState(() => _confirming = true);
-                      try {
-                        await widget.onConfirm();
-                      } finally {
-                        if (mounted) setState(() => _confirming = false);
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                elevation: 0,
-                minimumSize: const Size.fromHeight(52),
-                backgroundColor: const Color(0xFFFF5B8A),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: _confirming
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Text(
-                      widget.secondaryButtonText,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-            ),
+
+          _SlideToConfirmButton(
+            label: widget.secondaryButtonText,
+            isLoading: _confirming,
+            isDisabled: widget.isActionComplete || _navigating || _confirming,
+            onConfirmed: () async {
+              setState(() => _confirming = true);
+              try {
+                await widget.onConfirm();
+              } finally {
+                if (mounted) {
+                  setState(() => _confirming = false);
+                }
+              }
+            },
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SlideToConfirmButton extends StatefulWidget {
+  final String label;
+  final bool isLoading;
+  final bool isDisabled;
+  final Future<void> Function() onConfirmed;
+
+  const _SlideToConfirmButton({
+    required this.label,
+    required this.isLoading,
+    required this.isDisabled,
+    required this.onConfirmed,
+  });
+
+  @override
+  State<_SlideToConfirmButton> createState() => _SlideToConfirmButtonState();
+}
+
+class _SlideToConfirmButtonState extends State<_SlideToConfirmButton> {
+  double _dragDx = 0;
+
+  @override
+  void didUpdateWidget(covariant _SlideToConfirmButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isLoading || widget.isDisabled) {
+      _dragDx = 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const double cardHeight = 58;
+        const double knobSize = 44;
+        const double horizontalPadding = 8;
+
+        final double maxTravel =
+            constraints.maxWidth - knobSize - (horizontalPadding * 2);
+
+        final double knobLeft = _dragDx.clamp(0.0, maxTravel);
+
+        Future<void> handleDragEnd() async {
+          if (widget.isDisabled || widget.isLoading) return;
+
+          final bool shouldConfirm = knobLeft >= maxTravel * 0.72;
+
+          if (!shouldConfirm) {
+            setState(() => _dragDx = 0);
+            return;
+          }
+
+          setState(() => _dragDx = maxTravel);
+
+          await widget.onConfirmed();
+
+          if (mounted) {
+            setState(() => _dragDx = 0);
+          }
+        }
+
+        return Container(
+          height: cardHeight,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: widget.isDisabled
+                ? const Color(0xFFE9E9EE)
+                : const Color(0xFF3FC37A),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: widget.isLoading ? 0.55 : 1,
+                  child: Text(
+                    widget.label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: widget.isDisabled
+                          ? const Color(0xFF8B8B95)
+                          : Colors.white,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: horizontalPadding + knobLeft,
+                top: 7,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate:
+                      (widget.isDisabled || widget.isLoading)
+                      ? null
+                      : (details) {
+                          setState(() {
+                            _dragDx = (_dragDx + details.delta.dx).clamp(
+                              0.0,
+                              maxTravel,
+                            );
+                          });
+                        },
+                  onHorizontalDragEnd: (widget.isDisabled || widget.isLoading)
+                      ? null
+                      : (_) async {
+                          await handleDragEnd();
+                        },
+                  child: Container(
+                    width: knobSize,
+                    height: knobSize,
+                    decoration: BoxDecoration(
+                      color: widget.isDisabled
+                          ? Colors.white.withOpacity(0.65)
+                          : Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: widget.isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(11),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : Icon(
+                            Icons.keyboard_double_arrow_right_rounded,
+                            color: widget.isDisabled
+                                ? const Color(0xFF8B8B95)
+                                : Colors.white,
+                            size: 24,
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
