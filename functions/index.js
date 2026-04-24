@@ -60,14 +60,14 @@ exports.reofferLaundryOnBookingUpdate = onDocumentUpdated(
       before.status === "offered_to_laundry" &&
       after.status === "awaiting_laundry_assignment";
 
-    if (!statusChanged && !offerExpired) {
-      return;
-    }
+    if (!statusChanged && !offerExpired) return;
 
-    if (after.laundryId) {
-      logger.info("Skipping re-offer because laundryId still exists.", {
+    const laundrySnapshot = getLaundrySnapshot(after);
+
+    if (laundrySnapshot.id) {
+      logger.info("Skipping re-offer because laundrySnapshot still exists.", {
         bookingId,
-        laundryId: after.laundryId,
+        laundryId: laundrySnapshot.id,
       });
       return;
     }
@@ -85,9 +85,7 @@ exports.expireLaundryOffers = onDocumentUpdated(
 
     if (!before || !after) return;
 
-    if (after.status !== "offered_to_laundry") {
-      return;
-    }
+    if (after.status !== "offered_to_laundry") return;
 
     const offerExpiresAt = after.laundryOffer?.offerExpiresAt;
     if (!offerExpiresAt || typeof offerExpiresAt.toDate !== "function") {
@@ -97,14 +95,10 @@ exports.expireLaundryOffers = onDocumentUpdated(
     const now = new Date();
     const expiryDate = offerExpiresAt.toDate();
 
-    if (now < expiryDate) {
-      return;
-    }
+    if (now < expiryDate) return;
 
     const offeredLaundryId = after.laundryOffer?.offeredLaundryId;
-    if (!offeredLaundryId) {
-      return;
-    }
+    if (!offeredLaundryId) return;
 
     const bookingRef = db.collection("bookings").doc(bookingId);
 
@@ -116,11 +110,10 @@ exports.expireLaundryOffers = onDocumentUpdated(
         throw new Error("Booking not found while expiring offer");
       }
 
-      if (fresh.status !== "offered_to_laundry") {
-        return;
-      }
+      if (fresh.status !== "offered_to_laundry") return;
 
       const freshOfferExpiresAt = fresh.laundryOffer?.offerExpiresAt;
+
       if (
         !freshOfferExpiresAt ||
         typeof freshOfferExpiresAt.toDate !== "function" ||
@@ -141,14 +134,13 @@ exports.expireLaundryOffers = onDocumentUpdated(
 
       tx.update(bookingRef, {
         status: "awaiting_laundry_assignment",
-        laundryId: null,
-        laundryName: null,
-        laundryPhone: null,
-        laundryPhotoUrl: null,
+        laundrySnapshot: null,
         rejectedLaundryIds: updatedRejectedLaundryIds,
+
         "laundryOffer.offeredLaundryId": null,
         "laundryOffer.offeredAt": null,
         "laundryOffer.offerExpiresAt": null,
+
         updatedAt: FieldValue.serverTimestamp(),
       });
 
@@ -180,13 +172,14 @@ exports.acceptLaundryOffer = onDocumentUpdated(
     const acceptedNow =
       before.status === "offered_to_laundry" && after.status === "pending";
 
-    if (!acceptedNow) {
-      return;
-    }
+    if (!acceptedNow) return;
+
+    const laundrySnapshot = getLaundrySnapshot(after);
 
     logger.info("Laundry accepted booking offer.", {
       bookingId,
-      laundryId: after.laundryId || null,
+      laundryId: laundrySnapshot.id || null,
+      laundryName: laundrySnapshot.name || null,
     });
   },
 );
@@ -215,10 +208,12 @@ async function offerLaundryForBooking(bookingId) {
     return;
   }
 
-  if (booking.laundryId) {
-    logger.info("Skipping offer flow. Booking already has laundry.", {
+  const existingLaundrySnapshot = getLaundrySnapshot(booking);
+
+  if (existingLaundrySnapshot.id) {
+    logger.info("Skipping offer flow. Booking already has laundrySnapshot.", {
       bookingId,
-      laundryId: booking.laundryId,
+      laundryId: existingLaundrySnapshot.id,
     });
     return;
   }
@@ -234,7 +229,9 @@ async function offerLaundryForBooking(bookingId) {
   const selectedAddOns = Array.isArray(booking.selectedAddOns)
     ? booking.selectedAddOns
     : [];
+
   const serviceType = booking.serviceType || "";
+
   const rejectedLaundryIds = Array.isArray(booking.rejectedLaundryIds)
     ? booking.rejectedLaundryIds
     : [];
@@ -258,16 +255,12 @@ async function offerLaundryForBooking(bookingId) {
   for (const doc of laundriesSnap.docs) {
     const laundry = doc.data();
 
-    if (rejectedLaundryIds.includes(doc.id)) {
-      continue;
-    }
+    if (rejectedLaundryIds.includes(doc.id)) continue;
 
     const lat = laundry.location?.latitude;
     const lng = laundry.location?.longitude;
 
-    if (lat == null || lng == null) {
-      continue;
-    }
+    if (lat == null || lng == null) continue;
 
     const currentOrderCount = Number(laundry.business?.currentOrderCount ?? 0);
     const maxConcurrentOrders = Number(
@@ -278,23 +271,13 @@ async function offerLaundryForBooking(bookingId) {
       continue;
     }
 
-    if (!isLaundryOpenNow(laundry.openingHours)) {
-      continue;
-    }
-
-    if (!supportsRequestedService(laundry, serviceType)) {
-      continue;
-    }
-
-    if (!supportsRequestedAddOns(laundry, selectedAddOns)) {
-      continue;
-    }
+    if (!isLaundryOpenNow(laundry.openingHours)) continue;
+    if (!supportsRequestedService(laundry, serviceType)) continue;
+    if (!supportsRequestedAddOns(laundry, selectedAddOns)) continue;
 
     const distanceKm = haversineKm(pickupLat, pickupLng, lat, lng);
 
-    if (distanceKm > MAX_MATCH_DISTANCE_KM) {
-      continue;
-    }
+    if (distanceKm > MAX_MATCH_DISTANCE_KM) continue;
 
     const rating = Number(laundry.ratings?.rating ?? 0);
 
@@ -325,6 +308,8 @@ async function offerLaundryForBooking(bookingId) {
     new Date(Date.now() + OFFER_EXPIRY_MINUTES * 60 * 1000),
   );
 
+  const selectedLaundrySnapshot = buildLaundrySnapshot(best.id, best.data);
+
   await db.runTransaction(async (tx) => {
     const freshSnap = await tx.get(bookingRef);
     const fresh = freshSnap.data();
@@ -341,10 +326,12 @@ async function offerLaundryForBooking(bookingId) {
       return;
     }
 
-    if (fresh.laundryId) {
-      logger.info("Booking already has laundry before offer transaction.", {
+    const freshLaundrySnapshot = getLaundrySnapshot(fresh);
+
+    if (freshLaundrySnapshot.id) {
+      logger.info("Booking already has laundrySnapshot before transaction.", {
         bookingId,
-        laundryId: fresh.laundryId,
+        laundryId: freshLaundrySnapshot.id,
       });
       return;
     }
@@ -352,11 +339,8 @@ async function offerLaundryForBooking(bookingId) {
     const nextAttempts = Number(fresh.searchMeta?.assignmentAttempts ?? 0) + 1;
 
     tx.update(bookingRef, {
-      laundryId: best.id,
-      laundryName: best.data.profile?.name || "",
-      laundryPhone: best.data.contact?.phoneNumber || "",
-      laundryPhotoUrl:
-        best.data.profile?.photoUrl || best.data.profile?.logoUrl || "",
+      laundrySnapshot: selectedLaundrySnapshot,
+
       status: "offered_to_laundry",
       updatedAt: FieldValue.serverTimestamp(),
 
@@ -371,15 +355,15 @@ async function offerLaundryForBooking(bookingId) {
     tx.set(bookingRef.collection("status_history").doc(), {
       status: "offered_to_laundry",
       title: "Offer Sent To Laundry",
-      description: `${best.data.profile?.name || "A laundry"} received this order offer.`,
+      description: `${selectedLaundrySnapshot.name || "A laundry"} received this order offer.`,
       createdAt: FieldValue.serverTimestamp(),
     });
   });
 
   logger.info("Laundry offer created successfully.", {
     bookingId,
-    laundryId: best.id,
-    laundryName: best.data.profile?.name || "",
+    laundryId: selectedLaundrySnapshot.id,
+    laundryName: selectedLaundrySnapshot.name || "",
     distanceKm: best.distanceKm,
     rating: best.rating,
   });
@@ -396,9 +380,9 @@ async function markNoLaundryFound(bookingId) {
       throw new Error("Booking not found while marking no laundry found");
     }
 
-    if (booking.laundryId) {
-      return;
-    }
+    const laundrySnapshot = getLaundrySnapshot(booking);
+
+    if (laundrySnapshot.id) return;
 
     const nextAttempts =
       Number(booking.searchMeta?.assignmentAttempts ?? 0) + 1;
@@ -436,9 +420,7 @@ exports.offerPickupRiderOnBookingUpdate = onDocumentUpdated(
       before.status !== after.status &&
       after.status === "looking_for_pickup_rider";
 
-    if (!changedToLookingForPickupRider) {
-      return;
-    }
+    if (!changedToLookingForPickupRider) return;
 
     await assignPickupRiderForBooking(bookingId);
   },
@@ -456,9 +438,7 @@ exports.offerDeliveryRiderOnBookingUpdate = onDocumentUpdated(
     const changedToReadyForDropoff =
       before.status !== after.status && after.status === "ready_for_dropoff";
 
-    if (!changedToReadyForDropoff) {
-      return;
-    }
+    if (!changedToReadyForDropoff) return;
 
     await assignDeliveryRiderForBooking(bookingId);
   },
@@ -527,13 +507,12 @@ async function assignPickupRiderForBooking(bookingId) {
     const lat = rider.location?.latitude;
     const lng = rider.location?.longitude;
 
-    if (lat == null || lng == null) {
-      continue;
-    }
+    if (lat == null || lng == null) continue;
 
     const currentActiveRequestCount = Number(
       rider.business?.currentActiveRequestCount ?? 0,
     );
+
     const maxActiveRequests = Number(rider.business?.maxActiveRequests ?? 0);
 
     if (
@@ -545,9 +524,7 @@ async function assignPickupRiderForBooking(bookingId) {
 
     const distanceKm = haversineKm(pickupLat, pickupLng, lat, lng);
 
-    if (distanceKm > MAX_RIDER_MATCH_DISTANCE_KM) {
-      continue;
-    }
+    if (distanceKm > MAX_RIDER_MATCH_DISTANCE_KM) continue;
 
     const rating = Number(rider.ratings?.rating ?? 0);
 
@@ -605,6 +582,7 @@ async function assignPickupRiderForBooking(bookingId) {
     const currentActiveRequestCount = Number(
       riderData.business?.currentActiveRequestCount ?? 0,
     );
+
     const maxActiveRequests = Number(
       riderData.business?.maxActiveRequests ?? 0,
     );
@@ -638,14 +616,16 @@ async function assignPickupRiderForBooking(bookingId) {
       ? riderData.business.currentCustomerIds
       : [];
 
+    const laundrySnapshot = getLaundrySnapshot(freshBooking);
+    const laundryId = laundrySnapshot.id || null;
+
     const newActiveRequestIds = existingActiveRequestIds.includes(bookingId)
       ? existingActiveRequestIds
       : [...existingActiveRequestIds, bookingId];
 
     const newCurrentLaundryIds =
-      freshBooking.laundryId &&
-      !existingLaundryIds.includes(freshBooking.laundryId)
-        ? [...existingLaundryIds, freshBooking.laundryId]
+      laundryId && !existingLaundryIds.includes(laundryId)
+        ? [...existingLaundryIds, laundryId]
         : existingLaundryIds;
 
     const newCurrentCustomerIds =
@@ -766,13 +746,12 @@ async function assignDeliveryRiderForBooking(bookingId) {
     const lat = rider.location?.latitude;
     const lng = rider.location?.longitude;
 
-    if (lat == null || lng == null) {
-      continue;
-    }
+    if (lat == null || lng == null) continue;
 
     const currentActiveRequestCount = Number(
       rider.business?.currentActiveRequestCount ?? 0,
     );
+
     const maxActiveRequests = Number(rider.business?.maxActiveRequests ?? 0);
 
     if (
@@ -784,9 +763,7 @@ async function assignDeliveryRiderForBooking(bookingId) {
 
     const distanceKm = haversineKm(deliveryLat, deliveryLng, lat, lng);
 
-    if (distanceKm > MAX_RIDER_MATCH_DISTANCE_KM) {
-      continue;
-    }
+    if (distanceKm > MAX_RIDER_MATCH_DISTANCE_KM) continue;
 
     const rating = Number(rider.ratings?.rating ?? 0);
 
@@ -844,6 +821,7 @@ async function assignDeliveryRiderForBooking(bookingId) {
     const currentActiveRequestCount = Number(
       riderData.business?.currentActiveRequestCount ?? 0,
     );
+
     const maxActiveRequests = Number(
       riderData.business?.maxActiveRequests ?? 0,
     );
@@ -880,14 +858,16 @@ async function assignDeliveryRiderForBooking(bookingId) {
       ? riderData.business.currentCustomerIds
       : [];
 
+    const laundrySnapshot = getLaundrySnapshot(freshBooking);
+    const laundryId = laundrySnapshot.id || null;
+
     const newActiveRequestIds = existingActiveRequestIds.includes(bookingId)
       ? existingActiveRequestIds
       : [...existingActiveRequestIds, bookingId];
 
     const newCurrentLaundryIds =
-      freshBooking.laundryId &&
-      !existingLaundryIds.includes(freshBooking.laundryId)
-        ? [...existingLaundryIds, freshBooking.laundryId]
+      laundryId && !existingLaundryIds.includes(laundryId)
+        ? [...existingLaundryIds, laundryId]
         : existingLaundryIds;
 
     const newCurrentCustomerIds =
@@ -960,10 +940,12 @@ exports.cleanupRejectedPickupRider = onDocumentUpdated(
 
     if (!riderWasRemoved) return;
 
+    const laundrySnapshot = getLaundrySnapshot(before);
+
     await releaseRiderFromBooking({
       riderId: beforeRiderId,
       bookingId,
-      laundryId: before.laundryId || null,
+      laundryId: laundrySnapshot.id || null,
       customerId: before.customerId || null,
     });
   },
@@ -985,10 +967,12 @@ exports.cleanupRejectedDeliveryRider = onDocumentUpdated(
 
     if (!riderWasRemoved) return;
 
+    const laundrySnapshot = getLaundrySnapshot(before);
+
     await releaseRiderFromBooking({
       riderId: beforeRiderId,
       bookingId,
-      laundryId: before.laundryId || null,
+      laundryId: laundrySnapshot.id || null,
       customerId: before.customerId || null,
     });
   },
@@ -1010,8 +994,17 @@ exports.cleanupRidersOnBookingClosed = onDocumentUpdated(
 
     const pickupRiderId =
       after.pickupRider?.riderId || before.pickupRider?.riderId || null;
+
     const deliveryRiderId =
       after.deliveryRider?.riderId || before.deliveryRider?.riderId || null;
+
+    const afterLaundrySnapshot = getLaundrySnapshot(after);
+    const beforeLaundrySnapshot = getLaundrySnapshot(before);
+
+    const laundryId =
+      afterLaundrySnapshot.id || beforeLaundrySnapshot.id || null;
+
+    const customerId = after.customerId || before.customerId || null;
 
     const jobs = [];
 
@@ -1020,8 +1013,8 @@ exports.cleanupRidersOnBookingClosed = onDocumentUpdated(
         releaseRiderFromBooking({
           riderId: pickupRiderId,
           bookingId,
-          laundryId: after.laundryId || before.laundryId || null,
-          customerId: after.customerId || before.customerId || null,
+          laundryId,
+          customerId,
         }),
       );
     }
@@ -1031,8 +1024,8 @@ exports.cleanupRidersOnBookingClosed = onDocumentUpdated(
         releaseRiderFromBooking({
           riderId: deliveryRiderId,
           bookingId,
-          laundryId: after.laundryId || before.laundryId || null,
-          customerId: after.customerId || before.customerId || null,
+          laundryId,
+          customerId,
         }),
       );
     }
@@ -1058,9 +1051,11 @@ async function releaseRiderFromBooking({
     if (!rider) return;
 
     const business = rider.business || {};
+
     const currentActiveRequestCount = Number(
       business.currentActiveRequestCount ?? 0,
     );
+
     const maxActiveRequests = Number(business.maxActiveRequests ?? 0);
 
     const activeRequestIds = Array.isArray(business.activeRequestIds)
@@ -1110,6 +1105,42 @@ function isBookingClosed(status) {
 /*                                   HELPERS                                  */
 /* -------------------------------------------------------------------------- */
 
+function buildLaundrySnapshot(laundryId, laundry) {
+  return {
+    id: laundryId,
+    name: laundry.profile?.name || "",
+    phoneNumber: laundry.contact?.phoneNumber || "",
+    whatsappNumber: laundry.contact?.whatsappNumber || "",
+    photoUrl: laundry.profile?.photoUrl || laundry.profile?.logoUrl || "",
+    addressLine: laundry.location?.addressLine || "",
+    latitude: laundry.location?.latitude ?? null,
+    longitude: laundry.location?.longitude ?? null,
+    rating: Number(laundry.ratings?.rating ?? 0),
+    totalRatings: Number(laundry.ratings?.totalRatings ?? 0),
+    capturedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function getLaundrySnapshot(booking) {
+  const snapshot =
+    booking && typeof booking.laundrySnapshot === "object"
+      ? booking.laundrySnapshot
+      : {};
+
+  return {
+    id: snapshot.id || snapshot.laundryId || "",
+    name: snapshot.name || snapshot.laundryName || "",
+    phoneNumber: snapshot.phoneNumber || snapshot.phone || "",
+    whatsappNumber: snapshot.whatsappNumber || "",
+    photoUrl: snapshot.photoUrl || snapshot.logoUrl || "",
+    addressLine: snapshot.addressLine || "",
+    latitude: snapshot.latitude ?? null,
+    longitude: snapshot.longitude ?? null,
+    rating: Number(snapshot.rating ?? 0),
+    totalRatings: Number(snapshot.totalRatings ?? 0),
+  };
+}
+
 function supportsRequestedService(laundry, serviceType) {
   if (!serviceType) return true;
 
@@ -1157,28 +1188,20 @@ function isLaundryOpenNow(openingHours) {
   const todayKey = dayKeys[now.getDay()];
   const today = openingHours[todayKey];
 
-  if (!today) {
-    return true;
-  }
+  if (!today) return true;
 
-  if (today.isOpen !== true) {
-    return false;
-  }
+  if (today.isOpen !== true) return false;
 
   const open = today.open;
   const close = today.close;
 
-  if (!open || !close) {
-    return true;
-  }
+  if (!open || !close) return true;
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const openMinutes = parseTimeToMinutes(open);
   const closeMinutes = parseTimeToMinutes(close);
 
-  if (openMinutes == null || closeMinutes == null) {
-    return true;
-  }
+  if (openMinutes == null || closeMinutes == null) return true;
 
   return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
 }
@@ -1189,16 +1212,13 @@ function parseTimeToMinutes(time) {
   }
 
   const parts = time.split(":");
-  if (parts.length !== 2) {
-    return null;
-  }
+
+  if (parts.length !== 2) return null;
 
   const hours = Number(parts[0]);
   const minutes = Number(parts[1]);
 
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return null;
-  }
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
 
   return hours * 60 + minutes;
 }
@@ -1218,5 +1238,6 @@ function haversineKm(lat1, lng1, lat2, lng2) {
       Math.sin(dLng / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
   return earthRadiusKm * c;
 }

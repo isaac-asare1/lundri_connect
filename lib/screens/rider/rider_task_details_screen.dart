@@ -142,24 +142,25 @@ class RiderTaskDetailsScreen extends StatelessWidget {
                     name:
                         (booking.laundrySnapshotName?.trim().isNotEmpty == true)
                         ? booking.laundrySnapshotName!
-                        : ((booking.laundryName?.trim().isNotEmpty == true)
-                              ? booking.laundryName!
+                        : ((booking.laundrySnapshotName?.trim().isNotEmpty ==
+                                  true)
+                              ? booking.laundrySnapshotName!
                               : 'Laundry'),
                     phone:
                         (booking.laundrySnapshotPhone?.trim().isNotEmpty ==
                             true)
                         ? booking.laundrySnapshotPhone!
-                        : (booking.laundryPhone ?? ''),
+                        : (booking.laundrySnapshotPhone ?? ''),
                     photoUrl:
                         (booking.laundrySnapshotPhotoUrl?.trim().isNotEmpty ==
                             true)
                         ? booking.laundrySnapshotPhotoUrl!
-                        : (booking.laundryPhotoUrl ?? ''),
+                        : (booking.laundrySnapshotPhotoUrl ?? ''),
                     fallbackIcon: Icons.local_laundry_service_rounded,
                     onCall: () => _makePhoneCall(
                       (booking.laundrySnapshotPhone?.trim().isNotEmpty == true)
                           ? booking.laundrySnapshotPhone!
-                          : (booking.laundryPhone ?? ''),
+                          : (booking.laundrySnapshotPhone ?? ''),
                     ),
                     onChat: () {
                       Navigator.push(
@@ -169,7 +170,7 @@ class RiderTaskDetailsScreen extends StatelessWidget {
                             booking: booking,
                             currentUserRole: 'rider',
                             otherParticipantRole: 'laundry',
-                            otherParticipantId: booking.laundryId,
+                            otherParticipantId: booking.laundrySnapshotId,
                           ),
                         ),
                       );

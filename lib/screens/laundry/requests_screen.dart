@@ -1184,7 +1184,7 @@
 //       'timeline.acceptedAt': FieldValue.serverTimestamp(),
 //       'laundryAssignment.assignedAutomatically': true,
 //       'laundryAssignment.assignedAt': FieldValue.serverTimestamp(),
-//       'laundrySnapshot.laundryId': currentUser.id,
+//       'laundrySnapshot.id': currentUser.id,
 //       'laundrySnapshot.laundryName': laundryName,
 //       'laundrySnapshot.laundryPhone': laundryPhone,
 //       'laundrySnapshot.laundryPhotoUrl': laundryPhotoUrl,
@@ -2499,7 +2499,7 @@ class OperatorOrdersService {
   Stream<List<BookingModel>> streamNewOrders(String laundryId) {
     return _firestore
         .collection('bookings')
-        .where('laundryId', isEqualTo: laundryId)
+        .where('laundrySnapshot.id', isEqualTo: laundryId)
         .where('status', whereIn: _newStatuses)
         .snapshots()
         .map((snapshot) {
@@ -2522,7 +2522,7 @@ class OperatorOrdersService {
   Stream<List<BookingModel>> streamActiveOrders(String laundryId) {
     return _firestore
         .collection('bookings')
-        .where('laundryId', isEqualTo: laundryId)
+        .where('laundrySnapshot.id', isEqualTo: laundryId)
         .where('status', whereIn: _activeStatuses)
         .snapshots()
         .map((snapshot) {
@@ -2545,7 +2545,7 @@ class OperatorOrdersService {
   Stream<Map<String, int>> streamOrderCounts(String laundryId) {
     return FirebaseFirestore.instance
         .collection('bookings')
-        .where('laundryId', isEqualTo: laundryId)
+        .where('laundrySnapshot.id', isEqualTo: laundryId)
         .snapshots()
         .map((snapshot) {
           int newCount = 0;
@@ -2599,7 +2599,7 @@ class OperatorOrdersService {
       'timeline.acceptedAt': FieldValue.serverTimestamp(),
       'laundryAssignment.assignedAutomatically': true,
       'laundryAssignment.assignedAt': FieldValue.serverTimestamp(),
-      'laundrySnapshot.laundryId': currentUser.id,
+      'laundrySnapshot.id': currentUser.id,
       'laundrySnapshot.laundryName': laundryName,
       'laundrySnapshot.laundryPhone': laundryPhone,
       'laundrySnapshot.laundryPhotoUrl': laundryPhotoUrl,

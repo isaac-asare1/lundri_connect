@@ -637,7 +637,7 @@ class BookingService {
 
     return _firestore
         .collection(_bookingsCollection)
-        .where('laundryId', isEqualTo: laundryId)
+        .where('laundrySnapshot.id', isEqualTo: laundryId)
         .snapshots()
         .map((snapshot) {
           final bookings = snapshot.docs

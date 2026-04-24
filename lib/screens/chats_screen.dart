@@ -949,7 +949,7 @@ class ChatContextResolver {
       case 'customer':
         return booking.customerId;
       case 'laundry':
-        return booking.laundryId ?? '';
+        return booking.laundrySnapshotId ?? '';
       case 'pickupRider':
         return booking.pickupRiderId ?? currentUserId;
       case 'deliveryRider':
@@ -970,7 +970,7 @@ class ChatContextResolver {
             ? 'Customer'
             : booking.customerName;
       case 'laundry':
-        final name = booking.laundryName ?? '';
+        final name = booking.laundrySnapshotName ?? '';
         return name.trim().isEmpty ? 'Laundry' : name;
       case 'pickupRider':
         final name = booking.pickupRiderName ?? '';
@@ -993,7 +993,7 @@ class ChatContextResolver {
             ? 'Customer'
             : booking.customerName;
       case 'laundry':
-        final name = booking.laundryName ?? '';
+        final name = booking.laundrySnapshotName ?? '';
         return name.trim().isEmpty ? 'Laundry' : name;
       case 'pickupRider':
         final name = booking.pickupRiderName ?? '';

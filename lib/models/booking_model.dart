@@ -9,11 +9,6 @@ class BookingModel {
   final String customerPhone;
   final String customerPhotoUrl;
 
-  final String? laundryId;
-  final String? laundryName;
-  final String? laundryPhone;
-  final String? laundryPhotoUrl;
-
   final String? laundrySnapshotId;
   final String? laundrySnapshotName;
   final String? laundrySnapshotPhone;
@@ -112,10 +107,6 @@ class BookingModel {
     required this.customerName,
     required this.customerPhone,
     required this.customerPhotoUrl,
-    required this.laundryId,
-    required this.laundryName,
-    required this.laundryPhone,
-    required this.laundryPhotoUrl,
     required this.laundrySnapshotId,
     required this.laundrySnapshotName,
     required this.laundrySnapshotPhone,
@@ -233,20 +224,13 @@ class BookingModel {
         fallback: _readString(map['customerPhotoUrl']),
       ),
 
-      laundryId: _readNullableString(map['laundryId']),
-      laundryName: _readNullableString(map['laundryName']),
-      laundryPhone: _readNullableString(map['laundryPhone']),
-      laundryPhotoUrl: _readNullableString(map['laundryPhotoUrl']),
-
-      laundrySnapshotId: _readNullableString(laundrySnapshotMap['laundryId']),
-      laundrySnapshotName: _readNullableString(
-        laundrySnapshotMap['laundryName'],
-      ),
+      laundrySnapshotId: _readNullableString(laundrySnapshotMap['id']),
+      laundrySnapshotName: _readNullableString(laundrySnapshotMap['name']),
       laundrySnapshotPhone: _readNullableString(
-        laundrySnapshotMap['laundryPhone'],
+        laundrySnapshotMap['phoneNumber'],
       ),
       laundrySnapshotPhotoUrl: _readNullableString(
-        laundrySnapshotMap['laundryPhotoUrl'],
+        laundrySnapshotMap['photoUrl'],
       ),
       laundrySnapshotAddressLine: _readNullableString(
         laundrySnapshotMap['addressLine'],

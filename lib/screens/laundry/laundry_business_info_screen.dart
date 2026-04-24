@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/utils/helpers.dart';
-import '../core/utils/validators.dart';
-import '../models/business_info_model.dart';
-import '../providers/user_provider.dart';
-import '../widgets/custom_button.dart';
-import '../widgets/custom_text_field.dart';
+import '../../core/utils/helpers.dart';
+import '../../core/utils/validators.dart';
+import '../../models/business_info_model.dart';
+import '../../providers/user_provider.dart';
+import '../../widgets/custom_button.dart';
+import '../../widgets/custom_text_field.dart';
 
-class BusinessInfoScreen extends StatefulWidget {
-  const BusinessInfoScreen({super.key});
+class LaundryBusinessInfoScreen extends StatefulWidget {
+  const LaundryBusinessInfoScreen({super.key});
 
   @override
-  State<BusinessInfoScreen> createState() => _BusinessInfoScreenState();
+  State<LaundryBusinessInfoScreen> createState() =>
+      _LaundryBusinessInfoScreenState();
 }
 
-class _BusinessInfoScreenState extends State<BusinessInfoScreen> {
+class _LaundryBusinessInfoScreenState extends State<LaundryBusinessInfoScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _businessNameController;
