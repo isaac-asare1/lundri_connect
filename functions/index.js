@@ -18,7 +18,9 @@ const db = getFirestore();
 const MAX_MATCH_DISTANCE_KM = 8;
 const MAX_RIDER_MATCH_DISTANCE_KM = 5;
 const OFFER_EXPIRY_MINUTES = 2;
-const MAX_RIDER_LOCATION_AGE_MINUTES = 5;
+
+// Rider fallback freshness windows
+const RIDER_LOCATION_FRESHNESS_WINDOWS_MINUTES = [5, 10, 30];
 
 /* -------------------------------------------------------------------------- */
 /*                              LAUNDRY MATCHING                              */
@@ -104,10 +106,7 @@ exports.expireLaundryOffers = onDocumentUpdated(
       const freshSnap = await tx.get(bookingRef);
       const fresh = freshSnap.data();
 
-      if (!fresh) {
-        throw new Error("Booking not found while expiring offer");
-      }
-
+      if (!fresh) throw new Error("Booking not found while expiring offer");
       if (fresh.status !== "offered_to_laundry") return;
 
       const freshOfferExpiresAt = fresh.laundryOffer?.offerExpiresAt;
@@ -217,7 +216,9 @@ async function offerLaundryForBooking(bookingId) {
   }
 
   const bookingPoint =
-    booking.pickupAddress?.geopoint || booking.customerAddress?.geopoint;
+    booking.pickup?.geopoint ||
+    booking.pickupAddress?.geopoint ||
+    booking.customerAddress?.geopoint;
 
   const center = getGeoPointLatLng(bookingPoint);
 
@@ -238,19 +239,31 @@ async function offerLaundryForBooking(bookingId) {
     ? booking.rejectedLaundryIds
     : [];
 
-  const nearbyLaundries = await queryNearbyCollection({
-    collectionName: "laundries",
-    geohashField: "location.geohash",
-    geopointField: "location.geopoint",
-    center,
-    radiusKm: MAX_MATCH_DISTANCE_KM,
-    applyBaseQuery: (query) =>
-      query
-        .where("role", "==", "laundry")
-        .where("business.isApproved", "==", true)
-        .where("business.acceptingOrders", "==", true)
-        .where("business.acceptingAutoAssignments", "==", true),
-  });
+  let nearbyLaundries = [];
+
+  try {
+    nearbyLaundries = await queryNearbyCollection({
+      collectionName: "laundries",
+      geohashField: "location.geohash",
+      geopointField: "location.geopoint",
+      center,
+      radiusKm: MAX_MATCH_DISTANCE_KM,
+      applyBaseQuery: (query) =>
+        query
+          .where("role", "==", "laundry")
+          .where("business.isApproved", "==", true)
+          .where("business.acceptingOrders", "==", true)
+          .where("business.acceptingAutoAssignments", "==", true),
+    });
+  } catch (error) {
+    logger.error("Laundry geohash query failed.", {
+      bookingId,
+      center,
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
 
   if (nearbyLaundries.length === 0) {
     logger.info("No nearby laundries available for matching.", { bookingId });
@@ -314,9 +327,7 @@ async function offerLaundryForBooking(bookingId) {
     const freshSnap = await tx.get(bookingRef);
     const fresh = freshSnap.data();
 
-    if (!fresh) {
-      throw new Error("Booking disappeared before laundry offer");
-    }
+    if (!fresh) throw new Error("Booking disappeared before laundry offer");
 
     if (fresh.status !== "awaiting_laundry_assignment") {
       logger.info("Booking status changed before offer transaction.", {
@@ -476,7 +487,11 @@ async function assignPickupRiderForBooking(bookingId) {
     return;
   }
 
-  const pickupCenter = getGeoPointLatLng(booking.pickupAddress?.geopoint);
+  const pickupCenter = getGeoPointLatLng(
+    booking.pickup?.geopoint ||
+      booking.pickupAddress?.geopoint ||
+      booking.customerAddress?.geopoint,
+  );
 
   if (!pickupCenter) {
     logger.warn("Booking missing pickup GeoPoint for pickup rider flow.", {
@@ -485,7 +500,7 @@ async function assignPickupRiderForBooking(bookingId) {
     return;
   }
 
-  const best = await findBestNearbyRider({
+  const best = await findBestNearbyRiderWithFallback({
     center: pickupCenter,
     bookingId,
     flow: "pickup",
@@ -530,7 +545,7 @@ async function assignPickupRiderForBooking(bookingId) {
       throw new Error("Matched rider disappeared before assignment");
     }
 
-    if (!isRiderStillAssignable(riderData)) {
+    if (!isRiderStillAssignable(riderData, best.maxAgeMinutes)) {
       logger.info("Matched rider became unavailable before transaction.", {
         bookingId,
         riderId: best.id,
@@ -571,6 +586,7 @@ async function assignPickupRiderForBooking(bookingId) {
     riderName: best.data.profile?.fullName || "",
     distanceKm: best.distanceKm,
     rating: best.rating,
+    maxAgeMinutes: best.maxAgeMinutes,
   });
 }
 
@@ -608,7 +624,11 @@ async function assignDeliveryRiderForBooking(bookingId) {
     return;
   }
 
-  const deliveryCenter = getGeoPointLatLng(booking.customerAddress?.geopoint);
+  const deliveryCenter = getGeoPointLatLng(
+    booking.customerAddress?.geopoint ||
+      booking.dropoff?.geopoint ||
+      booking.pickup?.geopoint,
+  );
 
   if (!deliveryCenter) {
     logger.warn("Booking missing customer GeoPoint for delivery rider flow.", {
@@ -617,7 +637,7 @@ async function assignDeliveryRiderForBooking(bookingId) {
     return;
   }
 
-  const best = await findBestNearbyRider({
+  const best = await findBestNearbyRiderWithFallback({
     center: deliveryCenter,
     bookingId,
     flow: "delivery",
@@ -662,7 +682,7 @@ async function assignDeliveryRiderForBooking(bookingId) {
       throw new Error("Matched rider disappeared before delivery assignment");
     }
 
-    if (!isRiderStillAssignable(riderData)) {
+    if (!isRiderStillAssignable(riderData, best.maxAgeMinutes)) {
       logger.info(
         "Matched delivery rider became unavailable before transaction.",
         {
@@ -706,34 +726,75 @@ async function assignDeliveryRiderForBooking(bookingId) {
     riderName: best.data.profile?.fullName || "",
     distanceKm: best.distanceKm,
     rating: best.rating,
+    maxAgeMinutes: best.maxAgeMinutes,
   });
 }
 
-async function findBestNearbyRider({ center, bookingId, flow }) {
-  const nearbyRiders = await queryNearbyCollection({
-    collectionName: "riders",
-    geohashField: "location.geohash",
-    geopointField: "location.geopoint",
-    center,
-    radiusKm: MAX_RIDER_MATCH_DISTANCE_KM,
-    applyBaseQuery: (query) =>
-      query
-        .where("role", "==", "rider")
-        .where("business.isApproved", "==", true)
-        .where("business.isOnline", "==", true)
-        .where("business.acceptingAssignments", "==", true),
-  });
+async function findBestNearbyRiderWithFallback({ center, bookingId, flow }) {
+  for (const maxAgeMinutes of RIDER_LOCATION_FRESHNESS_WINDOWS_MINUTES) {
+    const best = await findBestNearbyRider({
+      center,
+      bookingId,
+      flow,
+      maxAgeMinutes,
+    });
+
+    if (best) {
+      logger.info("Rider matched using freshness fallback.", {
+        bookingId,
+        flow,
+        riderId: best.id,
+        maxAgeMinutes,
+      });
+
+      return best;
+    }
+
+    logger.info("No rider found for freshness window. Trying next window.", {
+      bookingId,
+      flow,
+      maxAgeMinutes,
+    });
+  }
+
+  return null;
+}
+
+async function findBestNearbyRider({ center, bookingId, flow, maxAgeMinutes }) {
+  let nearbyRiders = [];
+
+  try {
+    nearbyRiders = await queryNearbyCollection({
+      collectionName: "riders",
+      geohashField: "location.geohash",
+      geopointField: "location.geopoint",
+      center,
+      radiusKm: MAX_RIDER_MATCH_DISTANCE_KM,
+      applyBaseQuery: (query) =>
+        query
+          .where("role", "==", "rider")
+          .where("business.isApproved", "==", true)
+          .where("business.isOnline", "==", true)
+          .where("business.acceptingAssignments", "==", true),
+    });
+  } catch (error) {
+    logger.error("Rider geohash query failed.", {
+      bookingId,
+      flow,
+      center,
+      maxAgeMinutes,
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
 
   const eligible = [];
 
   for (const item of nearbyRiders) {
     const rider = item.data;
 
-    if (!isRecentLocation(rider.location?.lastLocationUpdatedAt, 5)) {
-      continue;
-    }
-
-    if (!isRiderStillAssignable(rider)) continue;
+    if (!isRiderStillAssignable(rider, maxAgeMinutes)) continue;
 
     const rating = Number(rider.ratings?.rating ?? 0);
 
@@ -743,6 +804,7 @@ async function findBestNearbyRider({ center, bookingId, flow }) {
       rating,
       score: item.distanceKm - rating * 0.05,
       data: rider,
+      maxAgeMinutes,
     });
   }
 
@@ -750,6 +812,7 @@ async function findBestNearbyRider({ center, bookingId, flow }) {
     logger.info("No eligible nearby riders after filtering.", {
       bookingId,
       flow,
+      maxAgeMinutes,
     });
     return null;
   }
@@ -758,7 +821,7 @@ async function findBestNearbyRider({ center, bookingId, flow }) {
   return eligible[0];
 }
 
-function isRiderStillAssignable(rider) {
+function isRiderStillAssignable(rider, maxAgeMinutes = 5) {
   const business = rider.business || {};
 
   if (business.isApproved !== true) return false;
@@ -785,12 +848,7 @@ function isRiderStillAssignable(rider) {
     return false;
   }
 
-  if (
-    !isRecentLocation(
-      rider.location?.lastLocationUpdatedAt,
-      MAX_RIDER_LOCATION_AGE_MINUTES,
-    )
-  ) {
+  if (!isRecentLocation(rider.location?.lastLocationUpdatedAt, maxAgeMinutes)) {
     return false;
   }
 
@@ -1046,6 +1104,7 @@ async function queryNearbyCollection({
   applyBaseQuery,
 }) {
   const radiusInM = radiusKm * 1000;
+
   const bounds = geofire.geohashQueryBounds(
     [center.latitude, center.longitude],
     radiusInM,
@@ -1065,6 +1124,12 @@ async function queryNearbyCollection({
   });
 
   const snapshots = await Promise.all(queries);
+
+  logger.info("Geo bounds query returned snapshots.", {
+    collectionName,
+    boundsCount: bounds.length,
+    docsPerBound: snapshots.map((snapshot) => snapshot.size),
+  });
 
   for (const snap of snapshots) {
     for (const doc of snap.docs) {
@@ -1091,6 +1156,13 @@ async function queryNearbyCollection({
       });
     }
   }
+
+  logger.info("Geo query completed.", {
+    collectionName,
+    resultsCount: results.length,
+    center,
+    radiusKm,
+  });
 
   return results;
 }
