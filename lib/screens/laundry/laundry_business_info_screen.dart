@@ -43,7 +43,7 @@ class LaundryBusinessInfoScreen extends StatefulWidget {
 class _LaundryBusinessInfoScreenState extends State<LaundryBusinessInfoScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  static const String _googleApiKey = 'AIzaSyAOge5xtKB9VCaCXvP3hhSI9f53KFqjmgE';
+  static const String _googleApiKey = 'AIzaSyABK1eJNZmo0VNvGabx4JZDTQvPppSpnA0';
 
   final _firestore = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
