@@ -148,7 +148,7 @@ class ProfileScreen extends StatelessWidget {
                 context.watch<UserProvider>().isUpdatingOnlineStatus ||
                 context.watch<AuthProvider>().isLoading,
             icon: Icons.logout_rounded,
-            title: 'Log Out...',
+            title: 'Log Out',
             subtitle: 'Sign out of your account',
             iconColor: AppColors.error,
             onTap: () async {
