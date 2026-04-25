@@ -9,14 +9,16 @@ const {
   onDocumentUpdated,
 } = require("firebase-functions/v2/firestore");
 const { logger } = require("firebase-functions");
+const geofire = require("geofire-common");
 
 initializeApp();
 
 const db = getFirestore();
 
 const MAX_MATCH_DISTANCE_KM = 8;
-const MAX_RIDER_MATCH_DISTANCE_KM = 10;
+const MAX_RIDER_MATCH_DISTANCE_KM = 5;
 const OFFER_EXPIRY_MINUTES = 2;
+const MAX_RIDER_LOCATION_AGE_MINUTES = 5;
 
 /* -------------------------------------------------------------------------- */
 /*                              LAUNDRY MATCHING                              */
@@ -84,7 +86,6 @@ exports.expireLaundryOffers = onDocumentUpdated(
     const bookingId = event.params.bookingId;
 
     if (!before || !after) return;
-
     if (after.status !== "offered_to_laundry") return;
 
     const offerExpiresAt = after.laundryOffer?.offerExpiresAt;
@@ -92,10 +93,7 @@ exports.expireLaundryOffers = onDocumentUpdated(
       return;
     }
 
-    const now = new Date();
-    const expiryDate = offerExpiresAt.toDate();
-
-    if (now < expiryDate) return;
+    if (new Date() < offerExpiresAt.toDate()) return;
 
     const offeredLaundryId = after.laundryOffer?.offeredLaundryId;
     if (!offeredLaundryId) return;
@@ -218,11 +216,15 @@ async function offerLaundryForBooking(bookingId) {
     return;
   }
 
-  const pickupLat = booking.pickupAddress?.latitude;
-  const pickupLng = booking.pickupAddress?.longitude;
+  const bookingPoint =
+    booking.pickupAddress?.geopoint || booking.customerAddress?.geopoint;
 
-  if (pickupLat == null || pickupLng == null) {
-    logger.warn("Booking missing pickup coordinates.", { bookingId });
+  const center = getGeoPointLatLng(bookingPoint);
+
+  if (!center) {
+    logger.warn("Booking missing pickup/customer GeoPoint for laundry flow.", {
+      bookingId,
+    });
     return;
   }
 
@@ -236,31 +238,33 @@ async function offerLaundryForBooking(bookingId) {
     ? booking.rejectedLaundryIds
     : [];
 
-  const laundriesSnap = await db
-    .collection("laundries")
-    .where("role", "==", "laundry")
-    .where("business.isApproved", "==", true)
-    .where("business.acceptingOrders", "==", true)
-    .where("business.acceptingAutoAssignments", "==", true)
-    .get();
+  const nearbyLaundries = await queryNearbyCollection({
+    collectionName: "laundries",
+    geohashField: "location.geohash",
+    geopointField: "location.geopoint",
+    center,
+    radiusKm: MAX_MATCH_DISTANCE_KM,
+    applyBaseQuery: (query) =>
+      query
+        .where("role", "==", "laundry")
+        .where("business.isApproved", "==", true)
+        .where("business.acceptingOrders", "==", true)
+        .where("business.acceptingAutoAssignments", "==", true),
+  });
 
-  if (laundriesSnap.empty) {
-    logger.info("No laundries available for matching.", { bookingId });
+  if (nearbyLaundries.length === 0) {
+    logger.info("No nearby laundries available for matching.", { bookingId });
     await markNoLaundryFound(bookingId);
     return;
   }
 
   const eligible = [];
 
-  for (const doc of laundriesSnap.docs) {
-    const laundry = doc.data();
+  for (const item of nearbyLaundries) {
+    const doc = item.doc;
+    const laundry = item.data;
 
     if (rejectedLaundryIds.includes(doc.id)) continue;
-
-    const lat = laundry.location?.latitude;
-    const lng = laundry.location?.longitude;
-
-    if (lat == null || lng == null) continue;
 
     const currentOrderCount = Number(laundry.business?.currentOrderCount ?? 0);
     const maxConcurrentOrders = Number(
@@ -275,17 +279,13 @@ async function offerLaundryForBooking(bookingId) {
     if (!supportsRequestedService(laundry, serviceType)) continue;
     if (!supportsRequestedAddOns(laundry, selectedAddOns)) continue;
 
-    const distanceKm = haversineKm(pickupLat, pickupLng, lat, lng);
-
-    if (distanceKm > MAX_MATCH_DISTANCE_KM) continue;
-
     const rating = Number(laundry.ratings?.rating ?? 0);
 
     eligible.push({
       id: doc.id,
-      distanceKm,
+      distanceKm: item.distanceKm,
       rating,
-      score: distanceKm - rating * 0.05,
+      score: item.distanceKm - rating * 0.05,
       data: laundry,
     });
   }
@@ -476,76 +476,27 @@ async function assignPickupRiderForBooking(bookingId) {
     return;
   }
 
-  const pickupLat = booking.pickupAddress?.latitude;
-  const pickupLng = booking.pickupAddress?.longitude;
+  const pickupCenter = getGeoPointLatLng(booking.pickupAddress?.geopoint);
 
-  if (pickupLat == null || pickupLng == null) {
-    logger.warn("Booking missing pickup coordinates for pickup rider flow.", {
+  if (!pickupCenter) {
+    logger.warn("Booking missing pickup GeoPoint for pickup rider flow.", {
       bookingId,
     });
     return;
   }
 
-  const ridersSnap = await db
-    .collection("riders")
-    .where("role", "==", "rider")
-    .where("business.isApproved", "==", true)
-    .where("business.isOnline", "==", true)
-    .where("business.acceptingAssignments", "==", true)
-    .get();
+  const best = await findBestNearbyRider({
+    center: pickupCenter,
+    bookingId,
+    flow: "pickup",
+  });
 
-  if (ridersSnap.empty) {
-    logger.info("No riders available for pickup assignment.", { bookingId });
-    return;
-  }
-
-  const eligible = [];
-
-  for (const doc of ridersSnap.docs) {
-    const rider = doc.data();
-
-    const lat = rider.location?.latitude;
-    const lng = rider.location?.longitude;
-
-    if (lat == null || lng == null) continue;
-
-    const currentActiveRequestCount = Number(
-      rider.business?.currentActiveRequestCount ?? 0,
-    );
-
-    const maxActiveRequests = Number(rider.business?.maxActiveRequests ?? 0);
-
-    if (
-      maxActiveRequests > 0 &&
-      currentActiveRequestCount >= maxActiveRequests
-    ) {
-      continue;
-    }
-
-    const distanceKm = haversineKm(pickupLat, pickupLng, lat, lng);
-
-    if (distanceKm > MAX_RIDER_MATCH_DISTANCE_KM) continue;
-
-    const rating = Number(rider.ratings?.rating ?? 0);
-
-    eligible.push({
-      id: doc.id,
-      distanceKm,
-      rating,
-      score: distanceKm - rating * 0.05,
-      data: rider,
-    });
-  }
-
-  if (eligible.length === 0) {
+  if (!best) {
     logger.info("No eligible riders matched booking for pickup.", {
       bookingId,
     });
     return;
   }
-
-  eligible.sort((a, b) => a.score - b.score);
-  const best = eligible[0];
 
   await db.runTransaction(async (tx) => {
     const freshBookingSnap = await tx.get(bookingRef);
@@ -579,18 +530,7 @@ async function assignPickupRiderForBooking(bookingId) {
       throw new Error("Matched rider disappeared before assignment");
     }
 
-    const currentActiveRequestCount = Number(
-      riderData.business?.currentActiveRequestCount ?? 0,
-    );
-
-    const maxActiveRequests = Number(
-      riderData.business?.maxActiveRequests ?? 0,
-    );
-
-    if (
-      maxActiveRequests > 0 &&
-      currentActiveRequestCount >= maxActiveRequests
-    ) {
+    if (!isRiderStillAssignable(riderData)) {
       logger.info("Matched rider became unavailable before transaction.", {
         bookingId,
         riderId: best.id,
@@ -598,43 +538,11 @@ async function assignPickupRiderForBooking(bookingId) {
       return;
     }
 
-    const existingActiveRequestIds = Array.isArray(
-      riderData.business?.activeRequestIds,
-    )
-      ? riderData.business.activeRequestIds
-      : [];
-
-    const existingLaundryIds = Array.isArray(
-      riderData.business?.currentLaundryIds,
-    )
-      ? riderData.business.currentLaundryIds
-      : [];
-
-    const existingCustomerIds = Array.isArray(
-      riderData.business?.currentCustomerIds,
-    )
-      ? riderData.business.currentCustomerIds
-      : [];
-
-    const laundrySnapshot = getLaundrySnapshot(freshBooking);
-    const laundryId = laundrySnapshot.id || null;
-
-    const newActiveRequestIds = existingActiveRequestIds.includes(bookingId)
-      ? existingActiveRequestIds
-      : [...existingActiveRequestIds, bookingId];
-
-    const newCurrentLaundryIds =
-      laundryId && !existingLaundryIds.includes(laundryId)
-        ? [...existingLaundryIds, laundryId]
-        : existingLaundryIds;
-
-    const newCurrentCustomerIds =
-      freshBooking.customerId &&
-      !existingCustomerIds.includes(freshBooking.customerId)
-        ? [...existingCustomerIds, freshBooking.customerId]
-        : existingCustomerIds;
-
-    const nextActiveCount = currentActiveRequestCount + 1;
+    const businessUpdate = buildRiderBusinessAssignmentUpdate({
+      riderData,
+      bookingId,
+      booking: freshBooking,
+    });
 
     tx.update(bookingRef, {
       "pickupRider.riderId": best.id,
@@ -647,19 +555,7 @@ async function assignPickupRiderForBooking(bookingId) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    tx.update(riderRef, {
-      "business.currentActiveRequestCount": nextActiveCount,
-      "business.activeRequestIds": newActiveRequestIds,
-      "business.currentLaundryIds": newCurrentLaundryIds,
-      "business.currentCustomerIds": newCurrentCustomerIds,
-      "business.availabilityStatus":
-        maxActiveRequests > 0 && nextActiveCount >= maxActiveRequests
-          ? "busy"
-          : "available",
-      "business.acceptingAssignments":
-        maxActiveRequests > 0 ? nextActiveCount < maxActiveRequests : true,
-      "timestamps.updatedAt": FieldValue.serverTimestamp(),
-    });
+    tx.update(riderRef, businessUpdate);
 
     tx.set(bookingRef.collection("status_history").doc(), {
       status: "looking_for_pickup_rider",
@@ -712,79 +608,27 @@ async function assignDeliveryRiderForBooking(bookingId) {
     return;
   }
 
-  const deliveryLat = booking.customerAddress?.latitude;
-  const deliveryLng = booking.customerAddress?.longitude;
+  const deliveryCenter = getGeoPointLatLng(booking.customerAddress?.geopoint);
 
-  if (deliveryLat == null || deliveryLng == null) {
-    logger.warn(
-      "Booking missing delivery coordinates for delivery rider flow.",
-      {
-        bookingId,
-      },
-    );
-    return;
-  }
-
-  const ridersSnap = await db
-    .collection("riders")
-    .where("role", "==", "rider")
-    .where("business.isApproved", "==", true)
-    .where("business.isOnline", "==", true)
-    .where("business.acceptingAssignments", "==", true)
-    .get();
-
-  if (ridersSnap.empty) {
-    logger.info("No riders available for delivery assignment.", { bookingId });
-    return;
-  }
-
-  const eligible = [];
-
-  for (const doc of ridersSnap.docs) {
-    const rider = doc.data();
-
-    const lat = rider.location?.latitude;
-    const lng = rider.location?.longitude;
-
-    if (lat == null || lng == null) continue;
-
-    const currentActiveRequestCount = Number(
-      rider.business?.currentActiveRequestCount ?? 0,
-    );
-
-    const maxActiveRequests = Number(rider.business?.maxActiveRequests ?? 0);
-
-    if (
-      maxActiveRequests > 0 &&
-      currentActiveRequestCount >= maxActiveRequests
-    ) {
-      continue;
-    }
-
-    const distanceKm = haversineKm(deliveryLat, deliveryLng, lat, lng);
-
-    if (distanceKm > MAX_RIDER_MATCH_DISTANCE_KM) continue;
-
-    const rating = Number(rider.ratings?.rating ?? 0);
-
-    eligible.push({
-      id: doc.id,
-      distanceKm,
-      rating,
-      score: distanceKm - rating * 0.05,
-      data: rider,
-    });
-  }
-
-  if (eligible.length === 0) {
-    logger.info("No eligible riders matched booking for delivery.", {
+  if (!deliveryCenter) {
+    logger.warn("Booking missing customer GeoPoint for delivery rider flow.", {
       bookingId,
     });
     return;
   }
 
-  eligible.sort((a, b) => a.score - b.score);
-  const best = eligible[0];
+  const best = await findBestNearbyRider({
+    center: deliveryCenter,
+    bookingId,
+    flow: "delivery",
+  });
+
+  if (!best) {
+    logger.info("No eligible riders matched booking for delivery.", {
+      bookingId,
+    });
+    return;
+  }
 
   await db.runTransaction(async (tx) => {
     const freshBookingSnap = await tx.get(bookingRef);
@@ -818,18 +662,7 @@ async function assignDeliveryRiderForBooking(bookingId) {
       throw new Error("Matched rider disappeared before delivery assignment");
     }
 
-    const currentActiveRequestCount = Number(
-      riderData.business?.currentActiveRequestCount ?? 0,
-    );
-
-    const maxActiveRequests = Number(
-      riderData.business?.maxActiveRequests ?? 0,
-    );
-
-    if (
-      maxActiveRequests > 0 &&
-      currentActiveRequestCount >= maxActiveRequests
-    ) {
+    if (!isRiderStillAssignable(riderData)) {
       logger.info(
         "Matched delivery rider became unavailable before transaction.",
         {
@@ -840,43 +673,11 @@ async function assignDeliveryRiderForBooking(bookingId) {
       return;
     }
 
-    const existingActiveRequestIds = Array.isArray(
-      riderData.business?.activeRequestIds,
-    )
-      ? riderData.business.activeRequestIds
-      : [];
-
-    const existingLaundryIds = Array.isArray(
-      riderData.business?.currentLaundryIds,
-    )
-      ? riderData.business.currentLaundryIds
-      : [];
-
-    const existingCustomerIds = Array.isArray(
-      riderData.business?.currentCustomerIds,
-    )
-      ? riderData.business.currentCustomerIds
-      : [];
-
-    const laundrySnapshot = getLaundrySnapshot(freshBooking);
-    const laundryId = laundrySnapshot.id || null;
-
-    const newActiveRequestIds = existingActiveRequestIds.includes(bookingId)
-      ? existingActiveRequestIds
-      : [...existingActiveRequestIds, bookingId];
-
-    const newCurrentLaundryIds =
-      laundryId && !existingLaundryIds.includes(laundryId)
-        ? [...existingLaundryIds, laundryId]
-        : existingLaundryIds;
-
-    const newCurrentCustomerIds =
-      freshBooking.customerId &&
-      !existingCustomerIds.includes(freshBooking.customerId)
-        ? [...existingCustomerIds, freshBooking.customerId]
-        : existingCustomerIds;
-
-    const nextActiveCount = currentActiveRequestCount + 1;
+    const businessUpdate = buildRiderBusinessAssignmentUpdate({
+      riderData,
+      bookingId,
+      booking: freshBooking,
+    });
 
     tx.update(bookingRef, {
       "deliveryRider.riderId": best.id,
@@ -889,19 +690,7 @@ async function assignDeliveryRiderForBooking(bookingId) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    tx.update(riderRef, {
-      "business.currentActiveRequestCount": nextActiveCount,
-      "business.activeRequestIds": newActiveRequestIds,
-      "business.currentLaundryIds": newCurrentLaundryIds,
-      "business.currentCustomerIds": newCurrentCustomerIds,
-      "business.availabilityStatus":
-        maxActiveRequests > 0 && nextActiveCount >= maxActiveRequests
-          ? "busy"
-          : "available",
-      "business.acceptingAssignments":
-        maxActiveRequests > 0 ? nextActiveCount < maxActiveRequests : true,
-      "timestamps.updatedAt": FieldValue.serverTimestamp(),
-    });
+    tx.update(riderRef, businessUpdate);
 
     tx.set(bookingRef.collection("status_history").doc(), {
       status: "ready_for_dropoff",
@@ -918,6 +707,149 @@ async function assignDeliveryRiderForBooking(bookingId) {
     distanceKm: best.distanceKm,
     rating: best.rating,
   });
+}
+
+async function findBestNearbyRider({ center, bookingId, flow }) {
+  const nearbyRiders = await queryNearbyCollection({
+    collectionName: "riders",
+    geohashField: "location.geohash",
+    geopointField: "location.geopoint",
+    center,
+    radiusKm: MAX_RIDER_MATCH_DISTANCE_KM,
+    applyBaseQuery: (query) =>
+      query
+        .where("role", "==", "rider")
+        .where("business.isApproved", "==", true)
+        .where("business.isOnline", "==", true)
+        .where("business.acceptingAssignments", "==", true),
+  });
+
+  const eligible = [];
+
+  for (const item of nearbyRiders) {
+    const rider = item.data;
+
+    if (!isRecentLocation(rider.location?.lastLocationUpdatedAt, 5)) {
+      continue;
+    }
+
+    if (!isRiderStillAssignable(rider)) continue;
+
+    const rating = Number(rider.ratings?.rating ?? 0);
+
+    eligible.push({
+      id: item.doc.id,
+      distanceKm: item.distanceKm,
+      rating,
+      score: item.distanceKm - rating * 0.05,
+      data: rider,
+    });
+  }
+
+  if (eligible.length === 0) {
+    logger.info("No eligible nearby riders after filtering.", {
+      bookingId,
+      flow,
+    });
+    return null;
+  }
+
+  eligible.sort((a, b) => a.score - b.score);
+  return eligible[0];
+}
+
+function isRiderStillAssignable(rider) {
+  const business = rider.business || {};
+
+  if (business.isApproved !== true) return false;
+  if (business.isOnline !== true) return false;
+  if (business.acceptingAssignments !== true) return false;
+
+  const availabilityStatus = business.availabilityStatus || "";
+
+  if (
+    availabilityStatus &&
+    availabilityStatus !== "available" &&
+    availabilityStatus !== "online"
+  ) {
+    return false;
+  }
+
+  const currentActiveRequestCount = Number(
+    business.currentActiveRequestCount ?? 0,
+  );
+
+  const maxActiveRequests = Number(business.maxActiveRequests ?? 0);
+
+  if (maxActiveRequests > 0 && currentActiveRequestCount >= maxActiveRequests) {
+    return false;
+  }
+
+  if (
+    !isRecentLocation(
+      rider.location?.lastLocationUpdatedAt,
+      MAX_RIDER_LOCATION_AGE_MINUTES,
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildRiderBusinessAssignmentUpdate({ riderData, bookingId, booking }) {
+  const business = riderData.business || {};
+
+  const currentActiveRequestCount = Number(
+    business.currentActiveRequestCount ?? 0,
+  );
+
+  const maxActiveRequests = Number(business.maxActiveRequests ?? 0);
+
+  const existingActiveRequestIds = Array.isArray(business.activeRequestIds)
+    ? business.activeRequestIds
+    : [];
+
+  const existingLaundryIds = Array.isArray(business.currentLaundryIds)
+    ? business.currentLaundryIds
+    : [];
+
+  const existingCustomerIds = Array.isArray(business.currentCustomerIds)
+    ? business.currentCustomerIds
+    : [];
+
+  const laundrySnapshot = getLaundrySnapshot(booking);
+  const laundryId = laundrySnapshot.id || null;
+
+  const newActiveRequestIds = existingActiveRequestIds.includes(bookingId)
+    ? existingActiveRequestIds
+    : [...existingActiveRequestIds, bookingId];
+
+  const newCurrentLaundryIds =
+    laundryId && !existingLaundryIds.includes(laundryId)
+      ? [...existingLaundryIds, laundryId]
+      : existingLaundryIds;
+
+  const newCurrentCustomerIds =
+    booking.customerId && !existingCustomerIds.includes(booking.customerId)
+      ? [...existingCustomerIds, booking.customerId]
+      : existingCustomerIds;
+
+  const nextActiveCount = currentActiveRequestCount + 1;
+
+  return {
+    "business.currentActiveRequestCount": nextActiveCount,
+    "business.activeRequestIds": newActiveRequestIds,
+    "business.currentLaundryIds": newCurrentLaundryIds,
+    "business.currentCustomerIds": newCurrentCustomerIds,
+    "business.availabilityStatus":
+      maxActiveRequests > 0 && nextActiveCount >= maxActiveRequests
+        ? "busy"
+        : "available",
+    "business.acceptingAssignments":
+      maxActiveRequests > 0 ? nextActiveCount < maxActiveRequests : true,
+    "timestamps.updatedAt": FieldValue.serverTimestamp(),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1102,6 +1034,99 @@ function isBookingClosed(status) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*                            GEOHASH QUERY HELPERS                           */
+/* -------------------------------------------------------------------------- */
+
+async function queryNearbyCollection({
+  collectionName,
+  geohashField,
+  geopointField,
+  center,
+  radiusKm,
+  applyBaseQuery,
+}) {
+  const radiusInM = radiusKm * 1000;
+  const bounds = geofire.geohashQueryBounds(
+    [center.latitude, center.longitude],
+    radiusInM,
+  );
+
+  const seen = new Set();
+  const results = [];
+
+  const queries = bounds.map(([start, end]) => {
+    let query = db.collection(collectionName);
+
+    if (typeof applyBaseQuery === "function") {
+      query = applyBaseQuery(query);
+    }
+
+    return query.orderBy(geohashField).startAt(start).endAt(end).get();
+  });
+
+  const snapshots = await Promise.all(queries);
+
+  for (const snap of snapshots) {
+    for (const doc of snap.docs) {
+      if (seen.has(doc.id)) continue;
+      seen.add(doc.id);
+
+      const data = doc.data();
+      const point = getNestedValue(data, geopointField);
+      const itemCenter = getGeoPointLatLng(point);
+
+      if (!itemCenter) continue;
+
+      const distanceKm = geofire.distanceBetween(
+        [center.latitude, center.longitude],
+        [itemCenter.latitude, itemCenter.longitude],
+      );
+
+      if (distanceKm > radiusKm) continue;
+
+      results.push({
+        doc,
+        data,
+        distanceKm,
+      });
+    }
+  }
+
+  return results;
+}
+
+function getGeoPointLatLng(geoPoint) {
+  if (!geoPoint) return null;
+
+  const latitude = geoPoint.latitude;
+  const longitude = geoPoint.longitude;
+
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function getNestedValue(object, path) {
+  if (!object || !path) return null;
+
+  return path.split(".").reduce((current, key) => {
+    if (!current || typeof current !== "object") return null;
+    return current[key];
+  }, object);
+}
+
+function isRecentLocation(timestamp, maxAgeMinutes) {
+  if (!timestamp || typeof timestamp.toMillis !== "function") {
+    return false;
+  }
+
+  const ageMs = Date.now() - timestamp.toMillis();
+  return ageMs <= maxAgeMinutes * 60 * 1000;
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                   HELPERS                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -1113,8 +1138,8 @@ function buildLaundrySnapshot(laundryId, laundry) {
     whatsappNumber: laundry.contact?.whatsappNumber || "",
     photoUrl: laundry.profile?.photoUrl || laundry.profile?.logoUrl || "",
     addressLine: laundry.location?.addressLine || "",
-    latitude: laundry.location?.latitude ?? null,
-    longitude: laundry.location?.longitude ?? null,
+    geohash: laundry.location?.geohash || "",
+    geopoint: laundry.location?.geopoint || null,
     rating: Number(laundry.ratings?.rating ?? 0),
     totalRatings: Number(laundry.ratings?.totalRatings ?? 0),
     capturedAt: FieldValue.serverTimestamp(),
@@ -1134,8 +1159,8 @@ function getLaundrySnapshot(booking) {
     whatsappNumber: snapshot.whatsappNumber || "",
     photoUrl: snapshot.photoUrl || snapshot.logoUrl || "",
     addressLine: snapshot.addressLine || "",
-    latitude: snapshot.latitude ?? null,
-    longitude: snapshot.longitude ?? null,
+    geohash: snapshot.geohash || "",
+    geopoint: snapshot.geopoint || null,
     rating: Number(snapshot.rating ?? 0),
     totalRatings: Number(snapshot.totalRatings ?? 0),
   };
@@ -1189,7 +1214,6 @@ function isLaundryOpenNow(openingHours) {
   const today = openingHours[todayKey];
 
   if (!today) return true;
-
   if (today.isOpen !== true) return false;
 
   const open = today.open;
@@ -1221,23 +1245,4 @@ function parseTimeToMinutes(time) {
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
 
   return hours * 60 + minutes;
-}
-
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const toRad = (value) => (value * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return earthRadiusKm * c;
 }
