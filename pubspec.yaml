@@ -47,6 +47,7 @@ dependencies:
   geocoding: ^3.0.0
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.3
+  geoflutterfire_plus: ^0.0.34
 
 dev_dependencies:
   flutter_test:
