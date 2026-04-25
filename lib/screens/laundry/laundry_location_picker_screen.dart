@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
 import 'package:geolocator/geolocator.dart';
+
 import '../../core/routes/route_names.dart';
 
 class LaundryLocationPickerScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _LaundryLocationPickerScreenState
 
   double? _latitude;
   double? _longitude;
+
   String _addressLine = '';
   String _errorMessage = '';
 
@@ -45,6 +48,7 @@ class _LaundryLocationPickerScreenState
 
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
       if (!serviceEnabled) {
         throw Exception('Location services are turned off.');
       }
@@ -97,6 +101,8 @@ class _LaundryLocationPickerScreenState
         resolvedAddress = '';
       }
 
+      if (!mounted) return;
+
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
@@ -104,6 +110,8 @@ class _LaundryLocationPickerScreenState
         _addressController.text = resolvedAddress;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
@@ -141,6 +149,10 @@ class _LaundryLocationPickerScreenState
 
     final String finalAddress = _addressController.text.trim();
 
+    final GeoFirePoint geoFirePoint = GeoFirePoint(
+      GeoPoint(_latitude!, _longitude!),
+    );
+
     setState(() {
       _isSaving = true;
     });
@@ -150,6 +162,8 @@ class _LaundryLocationPickerScreenState
           .collection('laundries')
           .doc(currentUser.uid)
           .update({
+            'location.geohash': geoFirePoint.geohash,
+            'location.geopoint': geoFirePoint.geopoint,
             'location.latitude': _latitude,
             'location.longitude': _longitude,
             'location.addressLine': finalAddress,
@@ -172,6 +186,8 @@ class _LaundryLocationPickerScreenState
         (route) => false,
       );
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -278,15 +294,10 @@ class _LaundryLocationPickerScreenState
                           ),
                           const SizedBox(height: 12),
                           _InfoTile(
-                            label: 'Latitude',
-                            value: _latitude!.toStringAsFixed(6),
+                            label: 'Picked Location',
+                            value:
+                                '${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
                             icon: Icons.my_location_rounded,
-                          ),
-                          const SizedBox(height: 12),
-                          _InfoTile(
-                            label: 'Longitude',
-                            value: _longitude!.toStringAsFixed(6),
-                            icon: Icons.explore_outlined,
                           ),
                         ],
                       )
