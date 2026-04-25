@@ -50,7 +50,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBXTGJHue1DyE3vLG6Uf6dNVRV2yvHAS5c',
+    apiKey: 'AIzaSyDQO8NrI-cbr0tVS8C0RxgkK2PEKi8VUIo',
     appId: '1:464337931141:android:5df132e4eb6b5683c7d2ec',
     messagingSenderId: '464337931141',
     projectId: 'omeeo-wash',
@@ -63,8 +63,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '464337931141',
     projectId: 'omeeo-wash',
     storageBucket: 'omeeo-wash.firebasestorage.app',
-    androidClientId: '464337931141-2rdgeqg9lemgm169cn6clhujiqquiav0.apps.googleusercontent.com',
-    iosClientId: '464337931141-02ag2d1rsrie3bdmglu6673r8oaeikfd.apps.googleusercontent.com',
+    androidClientId:
+        '464337931141-2rdgeqg9lemgm169cn6clhujiqquiav0.apps.googleusercontent.com',
+    iosClientId:
+        '464337931141-02ag2d1rsrie3bdmglu6673r8oaeikfd.apps.googleusercontent.com',
     iosBundleId: 'com.example.lundriConnect',
   );
 }

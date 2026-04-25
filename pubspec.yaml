@@ -45,8 +45,11 @@ dependencies:
   firebase_storage: ^13.3.0
   geolocator: ^13.0.1
   geocoding: ^3.0.0
+  google_maps_flutter: ^2.13.1
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.3
+  image_picker: ^1.1.2
+  permission_handler: ^11.3.1
   geoflutterfire_plus: ^0.0.34
 
 dev_dependencies:
