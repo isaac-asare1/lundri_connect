@@ -5,8 +5,9 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
+import 'laundry/laundry_profile_screen.dart';
 import 'laundry/requests_screen.dart';
-import 'profile_screen.dart';
+import 'rider/rider_profile_screen.dart';
 import 'rider/active_orders_screen.dart';
 import 'rider/rider_home_screen.dart';
 
@@ -38,13 +39,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final List<Widget> operatorScreens = const [
       OperatorHomeScreen(),
       OrdersScreen(),
-      ProfileScreen(),
+      LaundryProfileScreen(),
     ];
 
     final List<Widget> riderScreens = const [
       RiderHomeScreen(),
       ActiveOrdersScreen(),
-      ProfileScreen(),
+      RiderProfileScreen(),
     ];
 
     final List<Widget> screens = isRider ? riderScreens : operatorScreens;

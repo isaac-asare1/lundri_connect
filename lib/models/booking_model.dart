@@ -184,7 +184,7 @@ class BookingModel {
   });
 
   factory BookingModel.fromMap(Map<String, dynamic> map, String docId) {
-    final pickupAddressMap = _asMap(map['pickupAddress']);
+    final pickupAddressMap = _asMap(map['pickup']);
     final customerAddressMap = _asMap(map['customerAddress']);
     final pricingMap = _asMap(map['pricing']);
     final paymentMap = _asMap(map['payment']);

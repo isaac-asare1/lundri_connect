@@ -52,6 +52,7 @@ dependencies:
   permission_handler: ^11.3.1
   geoflutterfire_plus: ^0.0.34
   audioplayers: ^6.6.0
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

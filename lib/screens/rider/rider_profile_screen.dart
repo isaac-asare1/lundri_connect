@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:lundri_connect/core/utils/helpers.dart';
-import 'package:lundri_connect/screens/login_screen.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../core/constants/app_colors.dart';
-import '../core/routes/route_names.dart';
-import '../providers/auth_provider.dart';
-import '../providers/user_provider.dart';
-import '../widgets/profile_menu_tile.dart';
-import 'payments_screen.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/routes/route_names.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../widgets/profile_menu_tile.dart';
+import '../payments_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+class RiderProfileScreen extends StatelessWidget {
+  const RiderProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -94,15 +92,15 @@ class ProfileScreen extends StatelessWidget {
               Navigator.pushNamed(context, RouteNames.businessInfo);
             },
           ),
-          const SizedBox(height: 12),
-          ProfileMenuTile(
-            icon: Icons.access_time_outlined,
-            title: 'Working Hours',
-            subtitle: 'Schedule and availability',
-            onTap: () {
-              Navigator.pushNamed(context, RouteNames.workingHours);
-            },
-          ),
+          // const SizedBox(height: 12),
+          // ProfileMenuTile(
+          //   icon: Icons.access_time_outlined,
+          //   title: 'Working Hours',
+          //   subtitle: 'Schedule and availability',
+          //   onTap: () {
+          //     Navigator.pushNamed(context, RouteNames.workingHours);
+          //   },
+          // ),
           const SizedBox(height: 12),
           ProfileMenuTile(
             icon: Icons.payment,
@@ -113,15 +111,6 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const PaymentsScreen()),
               );
-            },
-          ),
-          const SizedBox(height: 12),
-          ProfileMenuTile(
-            icon: Icons.local_offer_outlined,
-            title: 'Service Pricing',
-            subtitle: 'Prices and laundry services',
-            onTap: () {
-              Navigator.pushNamed(context, RouteNames.servicePricing);
             },
           ),
           const SizedBox(height: 12),

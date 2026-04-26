@@ -294,8 +294,6 @@ class AuthProvider extends ChangeNotifier {
       'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
       'location': {
         'addressLine': '',
-        'latitude': null,
-        'longitude': null,
         'geohash': null,
         'digitalAddress': '',
         'landmark': '',

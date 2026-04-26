@@ -576,12 +576,6 @@ class _LaundryBusinessInfoScreenState extends State<LaundryBusinessInfoScreen> {
           'pricingVersion': oldPricing['pricingVersion'] ?? 1,
         },
 
-        'searchKeywords': _buildSearchKeywords(
-          name: name,
-          address: address,
-          subtitle: _selectedLocationSubtitle,
-        ),
-
         'timestamps': {
           'createdAt':
               oldTimestamps['createdAt'] ?? FieldValue.serverTimestamp(),
@@ -849,42 +843,93 @@ class _HeaderPhoto extends StatelessWidget {
 
     return GestureDetector(
       onTap: loading ? null : onTap,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          CircleAvatar(
-            radius: 50,
-            backgroundColor: const Color(0xFFE8EEF8),
-            backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
-            child: loading
-                ? const CircularProgressIndicator(strokeWidth: 2)
-                : hasImage
-                ? null
-                : const Icon(
-                    Icons.local_laundry_service_rounded,
-                    size: 38,
-                    color: Color(0xFF2563EB),
-                  ),
-          ),
-          Positioned(
-            right: -2,
-            bottom: 2,
-            child: Container(
-              height: 31,
-              width: 31,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2563EB),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 3),
-              ),
-              child: const Icon(
-                Icons.add_rounded,
-                color: Colors.white,
-                size: 18,
+      child: Container(
+        width: double.infinity,
+        height: 190,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8EEF8),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE4E7EC)),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: loading
+                    ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : hasImage
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) {
+                          return const _EmptyProfileContent();
+                        },
+                      )
+                    : const _EmptyProfileContent(),
               ),
             ),
-          ),
-        ],
+
+            if (hasImage && !loading)
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB),
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        'Change profile',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyProfileContent extends StatelessWidget {
+  const _EmptyProfileContent();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text(
+        'Add profile',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Color(0xFF344054),
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }

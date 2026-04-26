@@ -70,7 +70,7 @@ class RiderRequestModel {
       orderId: map['orderId'] as String? ?? '',
       riderId: map['riderId'] as String? ?? '',
       customerName: map['customerName'] as String? ?? '',
-      pickupAddress: map['pickupAddress'] as String? ?? '',
+      pickupAddress: map['pickup'] as String? ?? '',
       customerAddress: map['customerAddress'] as String? ?? '',
       requestType: map['requestType'] as String? ?? 'pickup',
       status: map['status'] as String? ?? 'pending',

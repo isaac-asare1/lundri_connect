@@ -79,7 +79,7 @@ class OrderModel {
       id: map['id'] as String? ?? '',
       customerName: map['customerName'] as String? ?? '',
       customerPhone: map['customerPhone'] as String? ?? '',
-      pickupAddress: map['pickupAddress'] as String? ?? '',
+      pickupAddress: map['pickup'] as String? ?? '',
       customerAddress: map['customerAddress'] as String? ?? '',
       serviceType: map['serviceType'] as String? ?? '',
       totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0,
