@@ -7,7 +7,7 @@ import '../../core/routes/route_names.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/profile_menu_tile.dart';
-import '../payments_screen.dart';
+import '../others/payments_screen.dart';
 
 class RiderProfileScreen extends StatelessWidget {
   const RiderProfileScreen({super.key});
@@ -89,18 +89,10 @@ class RiderProfileScreen extends StatelessWidget {
             title: 'Business Info',
             subtitle: 'Name, location, details',
             onTap: () {
-              Navigator.pushNamed(context, RouteNames.businessInfo);
+              Navigator.pushNamed(context, RouteNames.riderBusinessInfo);
             },
           ),
-          // const SizedBox(height: 12),
-          // ProfileMenuTile(
-          //   icon: Icons.access_time_outlined,
-          //   title: 'Working Hours',
-          //   subtitle: 'Schedule and availability',
-          //   onTap: () {
-          //     Navigator.pushNamed(context, RouteNames.workingHours);
-          //   },
-          // ),
+
           const SizedBox(height: 12),
           ProfileMenuTile(
             icon: Icons.payment,
@@ -120,6 +112,15 @@ class RiderProfileScreen extends StatelessWidget {
             subtitle: 'Notifications and preferences',
             onTap: () {
               Navigator.pushNamed(context, RouteNames.settings);
+            },
+          ),
+          const SizedBox(height: 12),
+          ProfileMenuTile(
+            icon: Icons.support_agent_outlined,
+            title: 'History',
+            subtitle: 'See your completed orders',
+            onTap: () {
+              Navigator.pushNamed(context, RouteNames.riderHistory);
             },
           ),
           const SizedBox(height: 12),

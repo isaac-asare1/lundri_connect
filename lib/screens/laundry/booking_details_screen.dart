@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:lundri_connect/screens/chats_screen.dart';
+import 'package:lundri_connect/screens/others/chats_screen.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../models/booking_model.dart';

@@ -8,6 +8,7 @@ import '../../providers/user_provider.dart';
 import '../../widgets/loading_widget.dart';
 
 class OperatorHomeScreen extends StatefulWidget {
+  // final bool isProfileCompleted;
   const OperatorHomeScreen({super.key});
 
   @override

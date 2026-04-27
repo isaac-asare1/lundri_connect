@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import 'package:lundri_connect/core/constants/app_colors.dart';
 import 'package:lundri_connect/widgets/loading_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/routes/route_names.dart';
 import '../../models/booking_model.dart';
-import '../chats_screen.dart';
+import '../others/chats_screen.dart';
 
 class RiderTaskDetailsScreen extends StatelessWidget {
   final String bookingId;
@@ -121,6 +123,7 @@ class RiderTaskDetailsScreen extends StatelessWidget {
                   phone: booking.customerPhone,
                   photoUrl: booking.customerPhotoUrl,
                   fallbackIcon: Icons.person_rounded,
+                  description: 'Contact the customer',
                   onCall: () => _makePhoneCall(booking.customerPhone),
                   onChat: () {
                     Navigator.push(
@@ -142,25 +145,23 @@ class RiderTaskDetailsScreen extends StatelessWidget {
                     name:
                         (booking.laundrySnapshotName?.trim().isNotEmpty == true)
                         ? booking.laundrySnapshotName!
-                        : ((booking.laundrySnapshotName?.trim().isNotEmpty ==
-                                  true)
-                              ? booking.laundrySnapshotName!
-                              : 'Laundry'),
+                        : 'Laundry',
                     phone:
                         (booking.laundrySnapshotPhone?.trim().isNotEmpty ==
                             true)
                         ? booking.laundrySnapshotPhone!
-                        : (booking.laundrySnapshotPhone ?? ''),
+                        : '',
                     photoUrl:
                         (booking.laundrySnapshotPhotoUrl?.trim().isNotEmpty ==
                             true)
                         ? booking.laundrySnapshotPhotoUrl!
-                        : (booking.laundrySnapshotPhotoUrl ?? ''),
+                        : '',
                     fallbackIcon: Icons.local_laundry_service_rounded,
+                    description: "Contact the laundry",
                     onCall: () => _makePhoneCall(
                       (booking.laundrySnapshotPhone?.trim().isNotEmpty == true)
                           ? booking.laundrySnapshotPhone!
-                          : (booking.laundrySnapshotPhone ?? ''),
+                          : '',
                     ),
                     onChat: () {
                       Navigator.push(
@@ -204,6 +205,16 @@ class RiderTaskDetailsScreen extends StatelessWidget {
                       isDeliveryTask: isDeliveryTask,
                       deliveryPickupArrivedAt: deliveryPickupArrivedAt,
                     );
+
+                    if (!context.mounted) return;
+
+                    final bool shouldShowCompleteCard =
+                        stage.stage == RiderTaskStage.goToDropoff ||
+                        stage.stage == RiderTaskStage.deliveryTaskDone;
+
+                    if (shouldShowCompleteCard) {
+                      await _showCompleteOrderDialog(context);
+                    }
                   },
                   isActionComplete: stage.isCompleted,
                 ),
@@ -212,6 +223,93 @@ class RiderTaskDetailsScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  static Future<void> _showCompleteOrderDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 26),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 28,
+                  offset: Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 150,
+                  width: 150,
+                  child: Lottie.asset(
+                    'assets/animations/completeOrder.json',
+                    repeat: false,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Task completed',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Great work. This order step has been updated successfully.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        RouteNames.mainNavigation,
+                        (route) => false,
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: const Color(0xFF3FC37A),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -422,6 +520,8 @@ class RiderTaskDetailsScreen extends StatelessWidget {
           deliveryPickupArrivedAt != null) {
         update['status'] = 'completed';
         update['timeline.arrivedAtCustomerAt'] = FieldValue.serverTimestamp();
+        update['timeline.completedAt'] = FieldValue.serverTimestamp();
+        update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
       } else if (booking.status == 'arrived_at_customer') {
         update['status'] = 'completed';
         update['timeline.completedAt'] = FieldValue.serverTimestamp();
@@ -482,6 +582,7 @@ class _ParticipantContactCard extends StatelessWidget {
   final String phone;
   final String photoUrl;
   final IconData fallbackIcon;
+  final String description;
   final VoidCallback onCall;
   final VoidCallback onChat;
 
@@ -490,102 +591,120 @@ class _ParticipantContactCard extends StatelessWidget {
     required this.phone,
     required this.photoUrl,
     required this.fallbackIcon,
+    required this.description,
     required this.onCall,
     required this.onChat,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x11000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.topLeft,
+          child: Text(
+            description,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: const Color(0xFFFFEEF5),
-            backgroundImage: photoUrl.trim().isNotEmpty
-                ? NetworkImage(photoUrl)
-                : null,
-            child: photoUrl.trim().isEmpty
-                ? Icon(fallbackIcon, color: const Color(0xFFFF5B8A), size: 28)
-                : null,
+        ),
+        SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x11000000),
+                blurRadius: 20,
+                offset: Offset(0, 10),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name.trim().isEmpty ? 'Unknown' : name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  phone.trim().isEmpty ? 'No phone number' : phone,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: const Color(0xFFFFEEF5),
+                backgroundImage: photoUrl.trim().isNotEmpty
+                    ? NetworkImage(photoUrl)
+                    : null,
+                child: photoUrl.trim().isEmpty
+                    ? Icon(
+                        fallbackIcon,
+                        color: const Color(0xFFFF5B8A),
+                        size: 28,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onCall,
-                        icon: const Icon(Icons.call_outlined),
-                        label: const Text('Call'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(46),
-                          foregroundColor: const Color(0xFFFF5B8A),
-                          side: const BorderSide(color: Color(0xFFFF5B8A)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
+                    Text(
+                      name.trim().isEmpty ? 'Unknown' : name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: onChat,
-                        icon: const Icon(Icons.chat_bubble_outline_rounded),
-                        label: const Text('Chat'),
-                        style: ElevatedButton.styleFrom(
-                          elevation: 0,
-                          minimumSize: const Size.fromHeight(46),
-                          backgroundColor: const Color(0xFFFF5B8A),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                    const SizedBox(height: 4),
+                    Text(
+                      phone.trim().isEmpty ? 'No phone number' : phone,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: onCall,
+                            icon: const Icon(Icons.call_outlined),
+                            label: const Text('Call'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(46),
+                              foregroundColor: const Color(0xFFFF5B8A),
+                              side: const BorderSide(color: Color(0xFFFF5B8A)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: onChat,
+                            icon: const Icon(Icons.chat_bubble_outline_rounded),
+                            label: const Text('Chat'),
+                            style: ElevatedButton.styleFrom(
+                              elevation: 0,
+                              minimumSize: const Size.fromHeight(46),
+                              backgroundColor: const Color(0xFFFF5B8A),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -738,7 +857,6 @@ class _StageCardState extends State<_StageCard> {
             ),
           ),
           const SizedBox(height: 18),
-
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
@@ -772,9 +890,7 @@ class _StageCardState extends State<_StageCard> {
                     ),
             ),
           ),
-
           const SizedBox(height: 12),
-
           _SlideToConfirmButton(
             label: widget.secondaryButtonText,
             isLoading: _confirming,

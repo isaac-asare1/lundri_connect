@@ -2,24 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:lundri_connect/core/routes/route_names.dart';
 import 'package:lundri_connect/screens/laundry/laundry_business_info_screen.dart'
     show LaundryBusinessInfoScreen;
-import 'package:lundri_connect/screens/licence_and_agreement.dart';
-import 'package:lundri_connect/screens/privacy_policy.dart';
-import 'package:lundri_connect/screens/terms_and_conditons.dart';
+import 'package:lundri_connect/screens/others/licence_and_agreement.dart';
+import 'package:lundri_connect/screens/others/privacy_policy.dart';
+import 'package:lundri_connect/screens/rider/rider_business_info_screen.dart';
+import 'package:lundri_connect/screens/rider/rider_orders_history_screen.dart';
+import 'package:lundri_connect/screens/others/terms_and_conditons.dart';
 
 import '../../screens/laundry/laundry_profile_screen.dart';
 import '../../screens/laundry/working_hours_screen.dart';
 import '../../screens/rider/active_orders_screen.dart';
-import '../../screens/login_screen.dart';
+import '../../screens/auth screens/login_screen.dart';
 import '../../screens/main_navigation_screen.dart';
 import '../../screens/laundry/operator_home_screen.dart';
-import '../../screens/payments_screen.dart';
+import '../../screens/others/payments_screen.dart';
 import '../../screens/laundry/requests_screen.dart';
 import '../../screens/rider/rider_home_screen.dart';
 import '../../screens/rider/rider_profile_screen.dart';
-import '../../screens/settings_screen.dart';
-import '../../screens/signup_screen.dart';
-import '../../screens/splash_screen.dart';
-import '../../screens/support_screen.dart';
+import '../../screens/others/settings_screen.dart';
+import '../../screens/auth screens/signup_screen.dart';
+import '../../screens/others/splash_screen.dart';
+import '../../screens/others/support_screen.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -76,6 +78,12 @@ class AppRoutes {
 
       case RouteNames.riderHome:
         return _materialRoute(const RiderHomeScreen());
+
+      case RouteNames.riderBusinessInfo:
+        return _materialRoute(const RiderProfileSetupScreen());
+
+      case RouteNames.riderHistory:
+        return _materialRoute(const RidersOdersHistoryScreen());
 
       case RouteNames.operatorHome:
         return _materialRoute(const OperatorHomeScreen());

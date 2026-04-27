@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:lundri_connect/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../core/constants/app_colors.dart';
+import '../../core/constants/app_colors.dart';
+import 'live_chat_screen.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -29,10 +32,10 @@ class SupportScreen extends StatelessWidget {
     }
   }
 
-  void _openLiveChat(BuildContext context) {
+  void _openLiveChat(BuildContext context, String role) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LiveChatScreen()),
+      MaterialPageRoute(builder: (_) => LiveChatScreen(role: role)),
     );
   }
 
@@ -44,6 +47,8 @@ class SupportScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final role = context.watch<AuthProvider>().selectedRole;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Support')),
       body: ListView(
@@ -53,7 +58,7 @@ class SupportScreen extends StatelessWidget {
             icon: Icons.chat_bubble_outline_rounded,
             title: 'Live Chat',
             subtitle: 'Chat with the Lundri support team.',
-            onTap: () => _openLiveChat(context),
+            onTap: () => _openLiveChat(context, role),
           ),
           const SizedBox(height: 12),
           _SupportTile(
@@ -185,23 +190,6 @@ class _FaqTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class LiveChatScreen extends StatelessWidget {
-  const LiveChatScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Live Chat')),
-      body: const Center(
-        child: Text(
-          'Live chat coming soon',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
       ),
     );
   }

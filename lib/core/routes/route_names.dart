@@ -13,6 +13,7 @@ class RouteNames {
   static const String laundryProfile = '/laundry-profile';
 
   static const String businessInfo = '/business-info';
+  static const String riderBusinessInfo = '/rider-business-info';
   static const String workingHours = '/working-hours';
   static const String servicePricing = '/service-pricing';
   static const String settings = '/settings';
@@ -21,6 +22,8 @@ class RouteNames {
   static const String licenceAndAgreement = '/licence-and-agreement';
   static const String privacyPolicy = '/privacy-policy';
   static const String termsAndContions = '/terms-and-conditons';
+
+  static const String riderHistory = '/rider-orders-history';
 
   static const String riderHome = '/rider-home';
   static const String operatorHome = '/operator-home';

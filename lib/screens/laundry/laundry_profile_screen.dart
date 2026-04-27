@@ -8,7 +8,7 @@ import '../../core/routes/route_names.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/profile_menu_tile.dart';
-import '../payments_screen.dart';
+import '../others/payments_screen.dart';
 
 class LaundryProfileScreen extends StatelessWidget {
   const LaundryProfileScreen({super.key});

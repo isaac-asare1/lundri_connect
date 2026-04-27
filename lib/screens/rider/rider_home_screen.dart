@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,6 +11,7 @@ import 'package:audioplayers/audioplayers.dart';
 
 import '../../models/booking_model.dart';
 import '../../models/rider_model.dart';
+import 'rider_business_info_screen.dart';
 
 class RiderHomeScreen extends StatefulWidget {
   const RiderHomeScreen({super.key});
@@ -21,10 +23,36 @@ class RiderHomeScreen extends StatefulWidget {
 class _RiderHomeScreenState extends State<RiderHomeScreen> {
   StreamSubscription<Position>? _locationSubscription;
 
+  final ValueNotifier<bool> _showCompleteProfileCard = ValueNotifier(false);
+
+  final AudioPlayer _requestRingPlayer = AudioPlayer();
+  Timer? _requestRingTimer;
+  bool _isRinging = false;
+
   @override
   void dispose() {
     _locationSubscription?.cancel();
+    _requestRingTimer?.cancel();
+    _requestRingPlayer.dispose();
+    _showCompleteProfileCard.dispose();
     super.dispose();
+  }
+
+  void _openCompleteProfileCard() {
+    _showCompleteProfileCard.value = true;
+  }
+
+  void _closeCompleteProfileCard() {
+    _showCompleteProfileCard.value = false;
+  }
+
+  Future<void> _goToProfileSetup() async {
+    _closeCompleteProfileCard();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RiderProfileSetupScreen()),
+    );
   }
 
   Future<void> _startRiderLocationTracking(String riderId) async {
@@ -79,21 +107,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     });
   }
 
-  final AudioPlayer _requestRingPlayer = AudioPlayer();
-  Timer? _requestRingTimer;
-  bool _isRinging = false;
-
   Future<void> playRequestRing() async {
-    if (_isRinging) return; // prevent duplicate loops
+    if (_isRinging) return;
 
     _isRinging = true;
 
     await _requestRingPlayer.stop();
     await _requestRingPlayer.setReleaseMode(ReleaseMode.loop);
-
     await _requestRingPlayer.play(AssetSource('sounds/request_ring.mp3'));
 
-    // Stop after 2 minutes
     _requestRingTimer?.cancel();
     _requestRingTimer = Timer(const Duration(minutes: 1), () async {
       await stopRequestRing();
@@ -289,131 +311,168 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   playRequestRing();
                 }
 
-                return Column(
+                return Stack(
                   children: [
-                    _buildHeader(context),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _SwipeOnlineCard(
-                              isOnline: rider.isOnline,
-                              onChanged: (goOnline) async {
-                                if (goOnline) {
-                                  await _startRiderLocationTracking(rider.id);
-                                } else {
-                                  await _stopRiderLocationTracking(rider.id);
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 18),
-                            Row(
+                    Column(
+                      children: [
+                        _buildHeader(context),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: _QuickStatCard(
-                                    icon: Icons.assignment_outlined,
-                                    iconColor: const Color(0xFFFF5B8A),
-                                    value: '${requests.length}',
-                                    label: 'New Requests',
+                                _SwipeOnlineCard(
+                                  isOnline: rider.isOnline,
+                                  onChanged: (goOnline) async {
+                                    if (!rider.isProfileCompleted && goOnline) {
+                                      _openCompleteProfileCard();
+
+                                      ScaffoldMessenger.of(context)
+                                        ..hideCurrentSnackBar()
+                                        ..showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Complete your profile before going online.',
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      return;
+                                    }
+
+                                    if (goOnline) {
+                                      await _startRiderLocationTracking(
+                                        rider.id,
+                                      );
+                                    } else {
+                                      await _stopRiderLocationTracking(
+                                        rider.id,
+                                      );
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 18),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _QuickStatCard(
+                                        icon: Icons.assignment_outlined,
+                                        iconColor: const Color(0xFFFF5B8A),
+                                        value: '${requests.length}',
+                                        label: 'New Requests',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: _QuickStatCard(
+                                        icon: Icons.wifi_tethering_rounded,
+                                        iconColor: const Color(0xFFFF5B8A),
+                                        value: rider.isOnline ? 'Yes' : 'No',
+                                        label: 'Online',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 22),
+                                const Text(
+                                  'New Requests',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF2A2F3A),
                                   ),
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: _QuickStatCard(
-                                    icon: Icons.wifi_tethering_rounded,
-                                    iconColor: const Color(0xFFFF5B8A),
-                                    value: rider.isOnline ? 'Yes' : 'No',
-                                    label: 'Online',
+                                const SizedBox(height: 14),
+                                if (requests.isEmpty)
+                                  const _EmptyRequestsCard()
+                                else
+                                  ...List.generate(
+                                    requests.length,
+                                    (index) => Padding(
+                                      padding: EdgeInsets.only(
+                                        bottom: index == requests.length - 1
+                                            ? 0
+                                            : 14,
+                                      ),
+                                      child: _RiderRequestCard(
+                                        booking: requests[index],
+                                        onAccept: () async {
+                                          await _acceptRequest(
+                                            booking: requests[index],
+                                            riderId: rider.id,
+                                          );
+
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                              ..hideCurrentSnackBar()
+                                              ..showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Order accepted successfully.',
+                                                  ),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                          }
+                                        },
+                                        onReject: () async {
+                                          final result =
+                                              await showModalBottomSheet<
+                                                _CancelOrderResult
+                                              >(
+                                                context: context,
+                                                isScrollControlled: true,
+                                                backgroundColor:
+                                                    Colors.transparent,
+                                                builder: (_) =>
+                                                    const _CancelOrderSheet(),
+                                              );
+
+                                          if (result == null) return;
+
+                                          await _rejectRequest(
+                                            booking: requests[index],
+                                            riderId: rider.id,
+                                            reason: result.reason,
+                                            note: result.note,
+                                          );
+
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                              ..hideCurrentSnackBar()
+                                              ..showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Order rejected successfully.',
+                                                  ),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                          }
+                                        },
+                                      ),
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
-                            const SizedBox(height: 22),
-                            const Text(
-                              'New Requests',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF2A2F3A),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            if (requests.isEmpty)
-                              const _EmptyRequestsCard()
-                            else
-                              ...List.generate(
-                                requests.length,
-                                (index) => Padding(
-                                  padding: EdgeInsets.only(
-                                    bottom: index == requests.length - 1
-                                        ? 0
-                                        : 14,
-                                  ),
-                                  child: _RiderRequestCard(
-                                    booking: requests[index],
-                                    onAccept: () async {
-                                      await _acceptRequest(
-                                        booking: requests[index],
-                                        riderId: rider.id,
-                                      );
-
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                          ..hideCurrentSnackBar()
-                                          ..showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Order accepted successfully.',
-                                              ),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                            ),
-                                          );
-                                      }
-                                    },
-                                    onReject: () async {
-                                      final result =
-                                          await showModalBottomSheet<
-                                            _CancelOrderResult
-                                          >(
-                                            context: context,
-                                            isScrollControlled: true,
-                                            backgroundColor: Colors.transparent,
-                                            builder: (_) =>
-                                                const _CancelOrderSheet(),
-                                          );
-
-                                      if (result == null) return;
-
-                                      await _rejectRequest(
-                                        booking: requests[index],
-                                        riderId: rider.id,
-                                        reason: result.reason,
-                                        note: result.note,
-                                      );
-
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                          ..hideCurrentSnackBar()
-                                          ..showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Order rejected successfully.',
-                                              ),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                            ),
-                                          );
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _showCompleteProfileCard,
+                      builder: (context, showCard, _) {
+                        if (!showCard) return const SizedBox.shrink();
+
+                        return _BlurredCompleteProfileOverlay(
+                          onClose: _closeCompleteProfileCard,
+                          onCompleteProfile: _goToProfileSetup,
+                        );
+                      },
                     ),
                   ],
                 );
@@ -481,6 +540,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         booking.status == 'ready_for_dropoff';
 
     if (!isPickupRequest && !isDeliveryRequest) return;
+
     await stopRequestRing();
 
     await bookingRef.update({
@@ -494,7 +554,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     });
   }
 
-  static Future<void> _rejectRequest({
+  Future<void> _rejectRequest({
     required BookingModel booking,
     required String riderId,
     required String reason,
@@ -513,6 +573,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         booking.status == 'ready_for_dropoff';
 
     if (!isPickupRequest && !isDeliveryRequest) return;
+
+    await stopRequestRing();
 
     await bookingRef.update({
       'status': isPickupRequest
@@ -549,6 +611,155 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           'deliveredAt': null,
         },
     });
+  }
+}
+
+class _BlurredCompleteProfileOverlay extends StatelessWidget {
+  final VoidCallback onClose;
+  final VoidCallback onCompleteProfile;
+
+  const _BlurredCompleteProfileOverlay({
+    required this.onClose,
+    required this.onCompleteProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: 1,
+        child: Stack(
+          children: [
+            GestureDetector(
+              onTap: onClose,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Container(color: Colors.black.withOpacity(0.18)),
+              ),
+            ),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _CompleteProfileCard(
+                  onTap: onCompleteProfile,
+                  onClose: onClose,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CompleteProfileCard extends StatelessWidget {
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  const _CompleteProfileCard({required this.onTap, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 28,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: InkWell(
+                onTap: onClose,
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6F7FB),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: Color(0xFF2D3440),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF5B8A).withOpacity(0.10),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(
+                Icons.person_add_alt_1_rounded,
+                color: Color(0xFFFF5B8A),
+                size: 27,
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Complete your rider profile',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF2D3440),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Add your profile photo, Ghana Card, vehicle details, phone verification, and location before going online.',
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.45,
+                color: Color(0xFF7C8493),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: onTap,
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: const Text(
+                  'Complete Profile',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: const Color(0xFFFF5B8A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

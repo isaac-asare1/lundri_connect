@@ -156,6 +156,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       await clearCachedUserRole();
 
+      final selectedRole = role.trim().toLowerCase();
+
       final credential = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -170,7 +172,8 @@ class AuthProvider extends ChangeNotifier {
       }
 
       late final String collectionName;
-      switch (role) {
+
+      switch (selectedRole) {
         case 'rider':
           collectionName = 'riders';
           break;
@@ -188,14 +191,30 @@ class AuthProvider extends ChangeNotifier {
       if (!doc.exists) {
         await clearCachedUserRole();
         await _auth.signOut();
+
         _selectedRole = 'laundry';
-        _errorMessage = 'You are not signed up as a $role.';
+        _errorMessage = 'You are not signed up as a $selectedRole.';
         notifyListeners();
+
         return false;
       }
 
-      _selectedRole = role;
-      await cacheUserRole(uid: uid, role: role);
+      final data = doc.data() ?? {};
+
+      if (data['isDeleted'] == true) {
+        await clearCachedUserRole();
+        await _auth.signOut();
+
+        _selectedRole = 'laundry';
+        _errorMessage =
+            'This account has been deleted. Please contact support.';
+        notifyListeners();
+
+        return false;
+      }
+
+      _selectedRole = selectedRole;
+      await cacheUserRole(uid: uid, role: selectedRole);
       notifyListeners();
 
       return true;
@@ -290,7 +309,12 @@ class AuthProvider extends ChangeNotifier {
     return {
       'id': uid,
       'role': 'rider',
-      'profile': {'fullName': fullName, 'photoUrl': ''},
+      'isDeleted': false,
+      'profile': {
+        'fullName': fullName,
+        'photoUrl': '',
+        'isProfileCompleted': false,
+      },
       'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
       'location': {
         'addressLine': '',
@@ -342,12 +366,14 @@ class AuthProvider extends ChangeNotifier {
     return {
       'id': uid,
       'role': 'laundry',
+      'isDeleted': false,
       'profile': {
         'name': laundryName,
         'description': '',
         'photoUrl': '',
         'logoUrl': '',
         'coverImageUrl': '',
+        'isProfileCompleted': false,
       },
       'contact': {'phoneNumber': '', 'email': email, 'whatsappNumber': ''},
       'location': {

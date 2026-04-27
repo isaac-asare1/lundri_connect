@@ -3,14 +3,14 @@ import 'package:lundri_connect/screens/main_navigation_screen.dart';
 import 'package:lundri_connect/widgets/loading_widget.dart';
 import 'package:provider/provider.dart';
 
-import '../core/constants/app_colors.dart';
-import '../core/routes/route_names.dart';
-import '../core/utils/helpers.dart';
-import '../core/utils/validators.dart';
-import '../providers/auth_provider.dart';
-import '../providers/navigation_provider.dart';
-import '../widgets/custom_button.dart';
-import '../widgets/custom_text_field.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/routes/route_names.dart';
+import '../../core/utils/helpers.dart';
+import '../../core/utils/validators.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/navigation_provider.dart';
+import '../../widgets/custom_button.dart';
+import '../../widgets/custom_text_field.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

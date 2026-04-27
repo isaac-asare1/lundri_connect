@@ -1,86 +1,3 @@
-// import 'package:flutter/material.dart';
-
-// class SettingsScreen extends StatefulWidget {
-//   const SettingsScreen({super.key});
-
-//   @override
-//   State<SettingsScreen> createState() => _SettingsScreenState();
-// }
-
-// class _SettingsScreenState extends State<SettingsScreen> {
-//   bool _notifications = true;
-//   bool _smsNotifications = true;
-//   bool _emailAlerts = false;
-//   bool _darkMode = false;
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(title: const Text('Settings')),
-//       body: ListView(
-//         padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-//         children: [
-//           const Text(
-//             'Notifications',
-//             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-//           ),
-//           const SizedBox(height: 8),
-//           Card(
-//             child: Column(
-//               children: [
-//                 SwitchListTile(
-//                   value: _notifications,
-//                   onChanged: (value) {
-//                     setState(() {
-//                       _notifications = value;
-//                     });
-//                   },
-//                   title: const Text('Push Notifications'),
-//                 ),
-//                 SwitchListTile(
-//                   value: _smsNotifications,
-//                   onChanged: (value) {
-//                     setState(() {
-//                       _smsNotifications = value;
-//                     });
-//                   },
-//                   title: const Text('SMS Alerts'),
-//                 ),
-//                 SwitchListTile(
-//                   value: _emailAlerts,
-//                   onChanged: (value) {
-//                     setState(() {
-//                       _emailAlerts = value;
-//                     });
-//                   },
-//                   title: const Text('Email Alerts'),
-//                 ),
-//               ],
-//             ),
-//           ),
-//           const SizedBox(height: 18),
-//           const Text(
-//             'Appearance',
-//             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-//           ),
-//           const SizedBox(height: 8),
-//           Card(
-//             child: SwitchListTile(
-//               value: _darkMode,
-//               onChanged: (value) {
-//                 setState(() {
-//                   _darkMode = value;
-//                 });
-//               },
-//               title: const Text('Dark Mode'),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:flutter/material.dart';
@@ -88,7 +5,8 @@ import 'package:lundri_connect/core/routes/route_names.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
-import '../../providers/user_provider.dart';
+import '../../../providers/user_provider.dart';
+import '../../providers/auth_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -182,23 +100,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _showDeleteAccountModal() async {
-    final passwordController = TextEditingController();
+  Future<void> _showDeleteAccountModal(BuildContext parentContext) async {
     bool deleting = false;
 
     await showModalBottomSheet<void>(
-      context: context,
+      context: parentContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
+        final passwordController = TextEditingController();
+
         return StatefulBuilder(
-          builder: (context, setModalState) {
+          builder: (modalContext, setModalState) {
             Future<void> deleteAccount() async {
-              final user = _auth.currentUser;
-              final email = user?.email;
+              final authUser = _auth.currentUser;
+              final email = authUser?.email;
               final password = passwordController.text.trim();
 
-              if (user == null || email == null || email.isEmpty) {
+              if (authUser == null || email == null || email.isEmpty) {
                 _showSnackBar('No signed-in account found');
                 return;
               }
@@ -208,6 +127,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 return;
               }
 
+              final selectedRole = parentContext
+                  .read<AuthProvider>()
+                  .selectedRole
+                  .trim()
+                  .toLowerCase();
+
+              final collectionName = selectedRole == 'rider'
+                  ? 'riders'
+                  : 'laundries';
+
               setModalState(() => deleting = true);
 
               try {
@@ -216,26 +145,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   password: password,
                 );
 
-                await user.reauthenticateWithCredential(credential);
+                await authUser.reauthenticateWithCredential(credential);
 
-                final uid = user.uid;
+                final uid = authUser.uid;
 
-                await _firestore.collection('laundries').doc(uid).delete();
+                await _firestore.collection(collectionName).doc(uid).set({
+                  'isDeleted': true,
+                  'deletedAt': FieldValue.serverTimestamp(),
+                  'business': {
+                    'isOnline': false,
+                    'acceptingOrders': false,
+                    'acceptingAutoAssignments': false,
+                    'acceptingAssignments': false,
+                    'availabilityStatus': 'offline',
+                  },
+                  'timestamps': {'updatedAt': FieldValue.serverTimestamp()},
+                }, SetOptions(merge: true));
 
-                await _firestore
-                    .collection('users')
-                    .doc(uid)
-                    .delete()
-                    .catchError((_) {});
-
-                await user.delete();
+                await _auth.signOut();
 
                 if (!mounted) return;
 
-                Navigator.of(sheetContext).pop();
+                parentContext.read<UserProvider>().clearUser();
+
+                if (Navigator.of(sheetContext).canPop()) {
+                  Navigator.of(sheetContext).pop();
+                }
+
                 Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/login', (route) => false);
+                  parentContext,
+                ).pushNamedAndRemoveUntil(RouteNames.login, (route) => false);
               } on fb_auth.FirebaseAuthException catch (e) {
                 debugPrint('Delete account auth error: ${e.code}');
 
@@ -253,16 +192,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _showSnackBar(message);
               } catch (e) {
                 debugPrint('Delete account error: $e');
+
                 if (!mounted) return;
                 _showSnackBar('Could not delete account');
               } finally {
-                if (mounted) setModalState(() => deleting = false);
+                if (mounted) {
+                  setModalState(() => deleting = false);
+                }
               }
             }
 
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
+                bottom: MediaQuery.of(modalContext).viewInsets.bottom,
               ),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -270,104 +212,119 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE4E7EC),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Container(
-                      height: 58,
-                      width: 58,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFFE4E4),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.delete_forever_rounded,
-                        color: Color(0xFFD92D20),
-                        size: 30,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Delete account?',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'This will permanently delete your laundry profile and account. This action cannot be undone.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF667085),
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: 'Confirm password',
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
-                        filled: true,
-                        fillColor: const Color(0xFFF7F9FC),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE4E7EC),
+                          borderRadius: BorderRadius.circular(999),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: deleting
-                                ? null
-                                : () => Navigator.of(sheetContext).pop(),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: const Text('Cancel'),
+                      const SizedBox(height: 18),
+                      Container(
+                        height: 58,
+                        width: 58,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFFE4E4),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.delete_forever_rounded,
+                          color: Color(0xFFD92D20),
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Delete account?',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Your account will be disabled and removed from active use. This action cannot be undone.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF667085),
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        enabled: !deleting,
+                        decoration: InputDecoration(
+                          labelText: 'Confirm password',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F9FC),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: deleting ? null : deleteAccount,
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52),
-                              backgroundColor: const Color(0xFFD92D20),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: deleting
+                                  ? null
+                                  : () {
+                                      passwordController.clear();
+                                      Navigator.of(sheetContext).pop();
+                                    },
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(52),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
-                            ),
-                            child: Text(
-                              deleting ? 'Deleting...' : 'Delete',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
+                              child: const Text('Cancel'),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: deleting ? null : deleteAccount,
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(52),
+                                backgroundColor: const Color(0xFFD92D20),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: deleting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Delete',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -375,8 +332,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-
-    passwordController.dispose();
   }
 
   @override
@@ -522,7 +477,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               subtitle: const Text('Permanently remove your account'),
-              onTap: _showDeleteAccountModal,
+              onTap: () {
+                _showDeleteAccountModal(context);
+              },
             ),
           ),
         ],

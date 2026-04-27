@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class RiderModel {
   final String id;
   final String role;
+  final bool isProfileCompleted;
 
   final String fullName;
   final String photoUrl;
@@ -55,6 +56,7 @@ class RiderModel {
   const RiderModel({
     required this.id,
     required this.role,
+    required this.isProfileCompleted,
     required this.fullName,
     required this.photoUrl,
     required this.phoneNumber,
@@ -110,6 +112,7 @@ class RiderModel {
     return RiderModel(
       id: _readString(map['id'], fallback: docId),
       role: _readString(map['role'], fallback: 'rider'),
+      isProfileCompleted: _readBool(map['isProfileCompleted'], fallback: false),
 
       fullName: _readString(profile['fullName']),
       photoUrl: _readString(profile['photoUrl']),
@@ -175,6 +178,7 @@ class RiderModel {
     return {
       'id': id,
       'role': role,
+      'isProfileCompleted': isProfileCompleted,
       'profile': {'fullName': fullName, 'photoUrl': photoUrl},
       'contact': {
         'phoneNumber': phoneNumber,
@@ -240,6 +244,7 @@ class RiderModel {
   RiderModel copyWith({
     String? id,
     String? role,
+    bool? isProfileCompleted,
     String? fullName,
     String? photoUrl,
     String? phoneNumber,
@@ -283,6 +288,7 @@ class RiderModel {
     return RiderModel(
       id: id ?? this.id,
       role: role ?? this.role,
+      isProfileCompleted: isProfileCompleted ?? this.isProfileCompleted,
       fullName: fullName ?? this.fullName,
       photoUrl: photoUrl ?? this.photoUrl,
       phoneNumber: phoneNumber ?? this.phoneNumber,
