@@ -96,6 +96,7 @@ class ActiveOrdersScreen extends StatelessWidget {
 
                 return _ActiveTaskCard(
                   booking: booking,
+                  currentRiderId: currentUser.uid,
                   onViewTask: () {
                     Navigator.push(
                       context,
@@ -115,31 +116,80 @@ class ActiveOrdersScreen extends StatelessWidget {
   }
 
   bool _isActiveRiderTask(BookingModel booking, String riderId) {
-    final isPickupTask =
+    final bool isPickupTask =
         booking.pickupRiderId == riderId &&
-        (booking.status == 'pickup_started' ||
-            booking.status == 'arrived_at_pickup' ||
-            booking.status == 'picked_up' ||
-            booking.status == 'arrived_at_laundry');
+        _pickupStatuses.contains(booking.status);
 
-    final isDeliveryTask =
+    final bool isDeliveryTask =
         booking.deliveryRiderId == riderId &&
-        (booking.status == 'delivery_in_progress' ||
-            booking.status == 'arrived_at_customer');
+        _deliveryStatuses.contains(booking.status);
 
     return isPickupTask || isDeliveryTask;
   }
 }
 
+const Set<String> _pickupStatuses = {
+  'pickup_started',
+  'arrived_at_pickup',
+  'picked_up',
+  // 'arrived_at_laundry',
+};
+
+const Set<String> _deliveryStatuses = {
+  'delivery_in_progress',
+  'arrived_at_customer',
+  'arrived_at_laundry_for_delivery',
+};
+
 class _ActiveTaskCard extends StatelessWidget {
   final BookingModel booking;
+  final String currentRiderId;
   final VoidCallback onViewTask;
 
-  const _ActiveTaskCard({required this.booking, required this.onViewTask});
+  const _ActiveTaskCard({
+    required this.booking,
+    required this.currentRiderId,
+    required this.onViewTask,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final serviceType = booking.serviceType.replaceAll('_', ' ').toUpperCase();
+    final String serviceType = booking.serviceType
+        .replaceAll('_', ' ')
+        .toUpperCase();
+
+    final bool isPickupTask =
+        booking.pickupRiderId == currentRiderId &&
+        _pickupStatuses.contains(booking.status);
+
+    final bool isDeliveryTask =
+        booking.deliveryRiderId == currentRiderId &&
+        _deliveryStatuses.contains(booking.status);
+
+    final String laundryAddress = _cleanAddress(
+      booking.laundrySnapshotAddressLine,
+      fallback: booking.laundrySnapshotName,
+      finalFallback: 'Laundry address not available',
+    );
+
+    final String customerAddress = _cleanAddress(
+      booking.customerAddress,
+      finalFallback: 'Customer address not available',
+    );
+
+    final String pickupAddress;
+    final String dropoffAddress;
+
+    if (isDeliveryTask) {
+      pickupAddress = laundryAddress;
+      dropoffAddress = customerAddress;
+    } else if (isPickupTask) {
+      pickupAddress = customerAddress;
+      dropoffAddress = laundryAddress;
+    } else {
+      pickupAddress = customerAddress;
+      dropoffAddress = laundryAddress;
+    }
 
     return Container(
       width: double.infinity,
@@ -162,7 +212,9 @@ class _ActiveTaskCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  booking.customerName,
+                  booking.customerName.trim().isEmpty
+                      ? 'Customer'
+                      : booking.customerName.trim(),
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
@@ -187,13 +239,13 @@ class _ActiveTaskCard extends StatelessWidget {
           _AddressRow(
             icon: Icons.location_on_outlined,
             title: 'Pickup:',
-            value: booking.pickupAddress,
+            value: pickupAddress,
           ),
           const SizedBox(height: 10),
           _AddressRow(
             icon: Icons.outlined_flag_rounded,
             title: 'Dropoff:',
-            value: booking.customerAddress,
+            value: dropoffAddress,
           ),
           const SizedBox(height: 18),
           SizedBox(
@@ -219,6 +271,20 @@ class _ActiveTaskCard extends StatelessWidget {
       ),
     );
   }
+
+  static String _cleanAddress(
+    String? value, {
+    String? fallback,
+    required String finalFallback,
+  }) {
+    final String cleaned = value?.trim() ?? '';
+    if (cleaned.isNotEmpty) return cleaned;
+
+    final String fallbackCleaned = fallback?.trim() ?? '';
+    if (fallbackCleaned.isNotEmpty) return fallbackCleaned;
+
+    return finalFallback;
+  }
 }
 
 class _AddressRow extends StatelessWidget {
@@ -234,6 +300,10 @@ class _AddressRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String cleanValue = value.trim().isEmpty
+        ? 'Not available'
+        : value.trim();
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -252,7 +322,7 @@ class _AddressRow extends StatelessWidget {
                   ),
                 ),
                 TextSpan(
-                  text: value,
+                  text: cleanValue,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
@@ -286,6 +356,7 @@ class _StatusChip extends StatelessWidget {
         fg = const Color(0xFF3B82F6);
         text = 'active';
         break;
+
       case 'arrived_at_pickup':
       case 'arrived_at_customer':
       case 'arrived_at_laundry':
@@ -293,11 +364,13 @@ class _StatusChip extends StatelessWidget {
         fg = const Color(0xFF7C3AED);
         text = 'arrived';
         break;
+
       case 'picked_up':
         bg = const Color(0xFFE6F8EC);
         fg = const Color(0xFF2E9B57);
         text = 'picked up';
         break;
+
       default:
         bg = const Color(0xFFE8F1FF);
         fg = const Color(0xFF3B82F6);

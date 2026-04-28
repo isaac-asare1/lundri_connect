@@ -958,9 +958,40 @@ class _RiderRequestCardState extends State<_RiderRequestCard> {
 
   @override
   Widget build(BuildContext context) {
-    final String serviceType = widget.booking.serviceType
+    final booking = widget.booking;
+
+    final String serviceType = booking.serviceType
         .replaceAll('_', ' ')
         .toUpperCase();
+
+    final bool isPickupRequest = booking.status == 'looking_for_pickup_rider';
+
+    final bool isDeliveryRequest = booking.status == 'ready_for_dropoff';
+
+    final String laundryAddress =
+        booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotAddressLine!.trim()
+        : booking.laundrySnapshotName?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotName!.trim()
+        : 'Laundry address not available';
+
+    final String customerAddress = booking.customerAddress.trim().isNotEmpty
+        ? booking.customerAddress.trim()
+        : 'Customer address not available';
+
+    final String pickupAddress;
+    final String dropoffAddress;
+
+    if (isDeliveryRequest) {
+      pickupAddress = laundryAddress;
+      dropoffAddress = customerAddress;
+    } else if (isPickupRequest) {
+      pickupAddress = customerAddress;
+      dropoffAddress = laundryAddress;
+    } else {
+      pickupAddress = customerAddress;
+      dropoffAddress = laundryAddress;
+    }
 
     return Container(
       width: double.infinity,
@@ -983,7 +1014,9 @@ class _RiderRequestCardState extends State<_RiderRequestCard> {
             children: [
               Expanded(
                 child: Text(
-                  widget.booking.customerName,
+                  booking.customerName.trim().isEmpty
+                      ? 'Customer'
+                      : booking.customerName.trim(),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -1008,13 +1041,13 @@ class _RiderRequestCardState extends State<_RiderRequestCard> {
           _AddressRow(
             icon: Icons.location_on_outlined,
             title: 'Pickup:',
-            value: widget.booking.pickupAddress,
+            value: pickupAddress,
           ),
           const SizedBox(height: 10),
           _AddressRow(
             icon: Icons.outlined_flag_rounded,
             title: 'Dropoff:',
-            value: widget.booking.customerAddress,
+            value: dropoffAddress,
           ),
           const SizedBox(height: 18),
           OutlinedButton(

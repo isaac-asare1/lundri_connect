@@ -1388,6 +1388,7 @@ class OperatorOrdersService {
     'arrived_at_pickup',
     'arrived_at_laundry',
     'processing',
+    'arrived_at_laundry_for_delivery',
     'ready_for_dropoff',
     'delivery_in_progress',
     'completed',

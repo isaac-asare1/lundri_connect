@@ -114,6 +114,16 @@ class LaundryProfileScreen extends StatelessWidget {
               Navigator.pushNamed(context, RouteNames.settings);
             },
           ),
+
+          const SizedBox(height: 12),
+          ProfileMenuTile(
+            icon: Icons.support_agent_outlined,
+            title: 'History',
+            subtitle: 'See your completed orders',
+            onTap: () {
+              Navigator.pushNamed(context, RouteNames.riderHistory);
+            },
+          ),
           const SizedBox(height: 12),
 
           ProfileMenuTile(

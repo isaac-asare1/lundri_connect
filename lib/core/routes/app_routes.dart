@@ -5,7 +5,7 @@ import 'package:lundri_connect/screens/laundry/laundry_business_info_screen.dart
 import 'package:lundri_connect/screens/others/licence_and_agreement.dart';
 import 'package:lundri_connect/screens/others/privacy_policy.dart';
 import 'package:lundri_connect/screens/rider/rider_business_info_screen.dart';
-import 'package:lundri_connect/screens/rider/rider_orders_history_screen.dart';
+import 'package:lundri_connect/screens/others/orders_history_screen.dart';
 import 'package:lundri_connect/screens/others/terms_and_conditons.dart';
 
 import '../../screens/laundry/laundry_profile_screen.dart';
