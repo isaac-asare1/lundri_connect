@@ -84,6 +84,8 @@ class AppRoutes {
 
       case RouteNames.riderHistory:
         return _materialRoute(const RidersOdersHistoryScreen());
+      case RouteNames.laundryHistory:
+        return _materialRoute(const LaundriesOrdersHistoryScreen());
 
       case RouteNames.operatorHome:
         return _materialRoute(const OperatorHomeScreen());

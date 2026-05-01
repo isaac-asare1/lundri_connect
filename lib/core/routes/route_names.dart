@@ -24,6 +24,7 @@ class RouteNames {
   static const String termsAndContions = '/terms-and-conditons';
 
   static const String riderHistory = '/rider-orders-history';
+  static const String laundryHistory = '/laundry-orders-history';
 
   static const String riderHome = '/rider-home';
   static const String operatorHome = '/operator-home';

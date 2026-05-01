@@ -12,635 +12,645 @@ import '../../core/routes/route_names.dart';
 import '../../models/booking_model.dart';
 import '../others/chats_screen.dart';
 
-// class RiderTaskDetailsScreen extends StatelessWidget {
-//   final String bookingId;
+class RiderTaskDetailsScreen extends StatelessWidget {
+  final String bookingId;
 
-//   const RiderTaskDetailsScreen({super.key, required this.bookingId});
+  const RiderTaskDetailsScreen({super.key, required this.bookingId});
 
-//   @override
-//   Widget build(BuildContext context) {
-//     final currentUser = FirebaseAuth.instance.currentUser;
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-//     if (currentUser == null) {
-//       return const Scaffold(
-//         body: Center(
-//           child: Text(
-//             'You need to sign in again.',
-//             style: TextStyle(
-//               fontSize: 15,
-//               fontWeight: FontWeight.w600,
-//               color: AppColors.textPrimary,
-//             ),
-//           ),
-//         ),
-//       );
-//     }
+    if (currentUser == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text(
+            'You need to sign in again.',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      );
+    }
 
-//     final bookingStream = FirebaseFirestore.instance
-//         .collection('bookings')
-//         .doc(bookingId)
-//         .snapshots();
+    final bookingStream = FirebaseFirestore.instance
+        .collection('bookings')
+        .doc(bookingId)
+        .snapshots();
 
-//     return Scaffold(
-//       backgroundColor: const Color(0xFFF7F4F6),
-//       appBar: AppBar(
-//         title: const Text('Task Details'),
-//         backgroundColor: Colors.transparent,
-//         elevation: 0,
-//         foregroundColor: AppColors.textPrimary,
-//       ),
-//       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-//         stream: bookingStream,
-//         builder: (context, snapshot) {
-//           if (snapshot.connectionState == ConnectionState.waiting) {
-//             return const LoadingWidget(message: 'Loading task...');
-//           }
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F4F6),
+      appBar: AppBar(
+        title: const Text('Task Details'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: AppColors.textPrimary,
+      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: bookingStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const LoadingWidget(message: 'Loading task...');
+          }
 
-//           if (snapshot.hasError) {
-//             return Center(
-//               child: Padding(
-//                 padding: const EdgeInsets.all(24),
-//                 child: Text(
-//                   'Failed to load task.\n${snapshot.error}',
-//                   textAlign: TextAlign.center,
-//                 ),
-//               ),
-//             );
-//           }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Failed to load task.\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
 
-//           if (!snapshot.hasData || !snapshot.data!.exists) {
-//             return const Center(
-//               child: Text('Task not found.', style: TextStyle(fontSize: 15)),
-//             );
-//           }
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(
+              child: Text('Task not found.', style: TextStyle(fontSize: 15)),
+            );
+          }
 
-//           final raw = snapshot.data!.data() ?? <String, dynamic>{};
-//           final booking = BookingModel.fromMap(raw, snapshot.data!.id);
+          final raw = snapshot.data!.data() ?? <String, dynamic>{};
+          final booking = BookingModel.fromMap(raw, snapshot.data!.id);
 
-//           final bool isDeliveryTask =
-//               booking.deliveryRiderId == currentUser.uid &&
-//               _isDeliveryStatus(booking.status);
+          final bool isDeliveryTask =
+              booking.deliveryRiderId == currentUser.uid &&
+              _isDeliveryStatus(booking.status);
 
-//           final bool isPickupTask =
-//               booking.pickupRiderId == currentUser.uid && !isDeliveryTask;
+          final bool isPickupTask =
+              booking.pickupRiderId == currentUser.uid && !isDeliveryTask;
 
-//           if (!isPickupTask && !isDeliveryTask) {
-//             return const Center(
-//               child: Text(
-//                 'This task is not assigned to you.',
-//                 style: TextStyle(fontSize: 15),
-//               ),
-//             );
-//           }
+          if (!isPickupTask && !isDeliveryTask) {
+            return const Center(
+              child: Text(
+                'This task is not assigned to you.',
+                style: TextStyle(fontSize: 15),
+              ),
+            );
+          }
 
-//           final stage = _buildStageInfo(
-//             booking: booking,
-//             isPickupTask: isPickupTask,
-//             isDeliveryTask: isDeliveryTask,
-//           );
+          final stage = _buildStageInfo(
+            booking: booking,
+            isPickupTask: isPickupTask,
+            isDeliveryTask: isDeliveryTask,
+          );
 
-//           final bool showLaundryContactCard =
-//               isDeliveryTask ||
-//               (isPickupTask &&
-//                   (booking.status == 'arrived_at_pickup' ||
-//                       booking.status == 'arrived_at_laundry'));
+          final bool showLaundryContactCard =
+              isDeliveryTask ||
+              (isPickupTask &&
+                  (booking.status == 'arrived_at_pickup' ||
+                      booking.status == 'arrived_at_laundry'));
 
-//           return SingleChildScrollView(
-//             padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-//             child: Column(
-//               crossAxisAlignment: CrossAxisAlignment.start,
-//               children: [
-//                 _ParticipantContactCard(
-//                   name: booking.customerName,
-//                   phone: booking.customerPhone,
-//                   photoUrl: booking.customerPhotoUrl,
-//                   fallbackIcon: Icons.person_rounded,
-//                   description: 'Contact the customer',
-//                   onCall: () => _makePhoneCall(booking.customerPhone),
-//                   onChat: () {
-//                     Navigator.push(
-//                       context,
-//                       MaterialPageRoute(
-//                         builder: (_) => ChatScreen(
-//                           booking: booking,
-//                           currentUserRole: 'rider',
-//                           otherParticipantRole: 'customer',
-//                           otherParticipantId: booking.customerId,
-//                         ),
-//                       ),
-//                     );
-//                   },
-//                 ),
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ParticipantContactCard(
+                  name: booking.customerName,
+                  phone: booking.customerPhone,
+                  photoUrl: booking.customerPhotoUrl,
+                  fallbackIcon: Icons.person_rounded,
+                  description: 'Contact the customer',
+                  onCall: () => _makePhoneCall(booking.customerPhone),
+                  onChat: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          booking: booking,
+                          currentUserRole: 'rider',
+                          otherParticipantRole: 'customer',
+                          otherParticipantId: booking.customerId,
+                        ),
+                      ),
+                    );
+                  },
+                ),
 
-//                 if (showLaundryContactCard) ...[
-//                   const SizedBox(height: 14),
-//                   _ParticipantContactCard(
-//                     name: _laundryName(booking),
-//                     phone: booking.laundrySnapshotPhone ?? '',
-//                     photoUrl: booking.laundrySnapshotPhotoUrl ?? '',
-//                     fallbackIcon: Icons.local_laundry_service_rounded,
-//                     description: 'Contact the laundry',
-//                     onCall: () =>
-//                         _makePhoneCall(booking.laundrySnapshotPhone ?? ''),
-//                     onChat: () {
-//                       Navigator.push(
-//                         context,
-//                         MaterialPageRoute(
-//                           builder: (_) => ChatScreen(
-//                             booking: booking,
-//                             currentUserRole: 'rider',
-//                             otherParticipantRole: 'laundry',
-//                             otherParticipantId: booking.laundrySnapshotId,
-//                           ),
-//                         ),
-//                       );
-//                     },
-//                   ),
-//                 ],
+                if (showLaundryContactCard) ...[
+                  const SizedBox(height: 14),
+                  _ParticipantContactCard(
+                    name: _laundryName(booking),
+                    phone: booking.laundrySnapshotPhone ?? '',
+                    photoUrl: booking.laundrySnapshotPhotoUrl ?? '',
+                    fallbackIcon: Icons.local_laundry_service_rounded,
+                    description: 'Contact the laundry',
+                    onCall: () =>
+                        _makePhoneCall(booking.laundrySnapshotPhone ?? ''),
+                    onChat: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            booking: booking,
+                            currentUserRole: 'rider',
+                            otherParticipantRole: 'laundry',
+                            otherParticipantId: booking.laundrySnapshotId,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
 
-//                 const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
-//                 _DestinationSummaryCard(
-//                   isPickupTask: isPickupTask,
-//                   isDeliveryTask: isDeliveryTask,
-//                   booking: booking,
-//                 ),
+                _DestinationSummaryCard(
+                  isPickupTask: isPickupTask,
+                  isDeliveryTask: isDeliveryTask,
+                  booking: booking,
+                ),
 
-//                 const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
-//                 _StageCard(
-//                   title: stage.title,
-//                   description: stage.description,
-//                   primaryButtonText: stage.navigateLabel,
-//                   secondaryButtonText: stage.confirmLabel,
-//                   isActionComplete: stage.isCompleted,
-//                   onNavigate: () => _openDirectionsForStage(
-//                     booking: booking,
-//                     stage: stage.stage,
-//                     isPickupTask: isPickupTask,
-//                     isDeliveryTask: isDeliveryTask,
-//                   ),
-//                   onConfirm: () async {
-//                     await _confirmStageArrival(
-//                       booking: booking,
-//                       stage: stage.stage,
-//                       isPickupTask: isPickupTask,
-//                       isDeliveryTask: isDeliveryTask,
-//                     );
+                _StageCard(
+                  title: stage.title,
+                  description: stage.description,
+                  primaryButtonText: stage.navigateLabel,
+                  secondaryButtonText: stage.confirmLabel,
+                  isActionComplete: stage.isCompleted,
+                  onNavigate: () => _openDirectionsForStage(
+                    booking: booking,
+                    stage: stage.stage,
+                    isPickupTask: isPickupTask,
+                    isDeliveryTask: isDeliveryTask,
+                  ),
+                  onConfirm: () async {
+                    await _confirmStageArrival(
+                      booking: booking,
+                      stage: stage.stage,
+                      isPickupTask: isPickupTask,
+                      isDeliveryTask: isDeliveryTask,
+                    );
 
-//                     if (!context.mounted) return;
+                    if (!context.mounted) return;
 
-//                     if (stage.stage == RiderTaskStage.deliveryTaskDone ||
-//                         stage.stage == RiderTaskStage.pickupTaskDone) {
-//                       await _showCompleteOrderDialog(context);
-//                     }
-//                   },
-//                 ),
-//               ],
-//             ),
-//           );
-//         },
-//       ),
-//     );
-//   }
+                    final bool shouldShowCompleteCard =
+                        stage.stage == RiderTaskStage.goToDropoff ||
+                        stage.stage == RiderTaskStage.goToCustomerDropoff ||
+                        stage.stage == RiderTaskStage.deliveryTaskDone;
 
-//   static bool _isDeliveryStatus(String status) {
-//     final normalized = status.trim().toLowerCase();
+                    if (shouldShowCompleteCard) {
+                      await _showCompleteOrderDialog(context);
+                    }
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-//     const deliveryStatuses = {
-//       'delivery_rider_assigned',
-//       'delivery_pickup_started',
-//       'delivery_in_progress',
-//       'arrived_at_laundry_for_delivery',
-//       'completed',
-//     };
+  static bool _isDeliveryStatus(String status) {
+    final normalized = status.trim().toLowerCase();
 
-//     return deliveryStatuses.contains(normalized);
-//   }
+    const deliveryStatuses = {
+      'delivery_rider_assigned',
+      'delivery_pickup_started',
+      'delivery_in_progress',
+      'arrived_at_laundry_for_delivery',
+      'arrived_at_customer',
+      'completed',
+    };
 
-//   static String _laundryName(BookingModel booking) {
-//     return booking.laundrySnapshotName?.trim().isNotEmpty == true
-//         ? booking.laundrySnapshotName!.trim()
-//         : 'Laundry';
-//   }
+    return deliveryStatuses.contains(normalized);
+  }
 
-//   static String _laundryAddress(BookingModel booking) {
-//     return booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
-//         ? booking.laundrySnapshotAddressLine!.trim()
-//         : booking.laundrySnapshotName?.trim().isNotEmpty == true
-//         ? booking.laundrySnapshotName!.trim()
-//         : 'Laundry address not available';
-//   }
+  static String _laundryName(BookingModel booking) {
+    return booking.laundrySnapshotName?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotName!.trim()
+        : 'Laundry';
+  }
 
-//   static String _ridePickup({
-//     required BookingModel booking,
-//     required bool isPickupTask,
-//     required bool isDeliveryTask,
-//   }) {
-//     if (isPickupTask) return booking.customerAddress;
-//     if (isDeliveryTask) return _laundryAddress(booking);
-//     return booking.customerAddress;
-//   }
+  static String _laundryAddress(BookingModel booking) {
+    return booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotAddressLine!.trim()
+        : booking.laundrySnapshotName?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotName!.trim()
+        : 'Laundry address not available';
+  }
 
-//   static String _rideDropoff({
-//     required BookingModel booking,
-//     required bool isPickupTask,
-//     required bool isDeliveryTask,
-//   }) {
-//     if (isPickupTask) return _laundryAddress(booking);
-//     if (isDeliveryTask) return booking.customerAddress;
-//     return _laundryAddress(booking);
-//   }
+  static String _ridePickup({
+    required BookingModel booking,
+    required bool isPickupTask,
+    required bool isDeliveryTask,
+  }) {
+    if (isPickupTask) return booking.customerAddress;
+    if (isDeliveryTask) return _laundryAddress(booking);
+    return booking.customerAddress;
+  }
 
-//   static _TaskStageInfo _buildStageInfo({
-//     required BookingModel booking,
-//     required bool isPickupTask,
-//     required bool isDeliveryTask,
-//   }) {
-//     if (isPickupTask) {
-//       switch (booking.status) {
-//         case 'pickup_started':
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.goToPickup,
-//             title: 'Go to Pickup Point',
-//             description:
-//                 'Navigate to the customer pickup point, then confirm once you arrive.',
-//             navigateLabel: 'Go to pickup point',
-//             confirmLabel: 'I have arrived at pickup point',
-//             isCompleted: false,
-//           );
+  static String _rideDropoff({
+    required BookingModel booking,
+    required bool isPickupTask,
+    required bool isDeliveryTask,
+  }) {
+    if (isPickupTask) return _laundryAddress(booking);
+    if (isDeliveryTask) return booking.customerAddress;
+    return _laundryAddress(booking);
+  }
 
-//         case 'arrived_at_pickup':
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.goToDropoff,
-//             title: 'Go to Laundry Drop-off',
-//             description:
-//                 'You have reached the customer. Now head to the laundry drop-off point.',
-//             navigateLabel: 'Go to laundry',
-//             confirmLabel: 'I have arrived at laundry',
-//             isCompleted: false,
-//           );
+  static _TaskStageInfo _buildStageInfo({
+    required BookingModel booking,
+    required bool isPickupTask,
+    required bool isDeliveryTask,
+  }) {
+    if (isPickupTask) {
+      switch (booking.status) {
+        case 'pickup_started':
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.goToPickup,
+            title: 'Go to Pickup Point',
+            description:
+                'Navigate to the customer pickup point, then confirm once you arrive.',
+            navigateLabel: 'Go to pickup point',
+            confirmLabel: 'I have arrived at pickup point',
+            isCompleted: false,
+          );
 
-//         case 'arrived_at_laundry':
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.pickupTaskDone,
-//             title: 'Pickup Task Completed',
-//             description:
-//                 'You have arrived at the laundry. This pickup leg is complete.',
-//             navigateLabel: 'Pickup completed',
-//             confirmLabel: 'Pickup completed',
-//             isCompleted: true,
-//           );
+        case 'arrived_at_pickup':
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.goToDropoff,
+            title: 'Go to Laundry Drop-off',
+            description:
+                'You have reached the customer. Now head to the laundry drop-off point.',
+            navigateLabel: 'Go to laundry',
+            confirmLabel: 'I have arrived at laundry',
+            isCompleted: false,
+          );
 
-//         default:
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.goToPickup,
-//             title: 'Go to Pickup Point',
-//             description:
-//                 'Navigate to the customer pickup point, then confirm once you arrive.',
-//             navigateLabel: 'Go to pickup point',
-//             confirmLabel: 'I have arrived at pickup point',
-//             isCompleted: false,
-//           );
-//       }
-//     }
+        case 'arrived_at_laundry':
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.pickupTaskDone,
+            title: 'Pickup Task Completed',
+            description:
+                'You have arrived at the laundry. This pickup leg is complete.',
+            navigateLabel: 'Pickup completed',
+            confirmLabel: 'Pickup completed',
+            isCompleted: true,
+          );
 
-//     if (isDeliveryTask) {
-//       switch (booking.status) {
-//         case 'delivery_rider_assigned':
-//         case 'delivery_pickup_started':
-//         case 'delivery_in_progress':
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.goToDeliveryLaundryPickup,
-//             title: 'Go to Laundry for Pickup',
-//             description:
-//                 'Navigate to the laundry to collect the washed clothes before delivering to the customer.',
-//             navigateLabel: 'Go to laundry',
-//             confirmLabel: 'I have arrived at laundry',
-//             isCompleted: false,
-//           );
+        default:
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.goToPickup,
+            title: 'Go to Pickup Point',
+            description:
+                'Navigate to the customer pickup point, then confirm once you arrive.',
+            navigateLabel: 'Go to pickup point',
+            confirmLabel: 'I have arrived at pickup point',
+            isCompleted: false,
+          );
+      }
+    }
 
-//         case 'arrived_at_laundry_for_delivery':
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.goToCustomerDropoff,
-//             title: 'Go to Customer Drop-off',
-//             description:
-//                 'You have collected the clothes from the laundry. Now deliver them to the customer.',
-//             navigateLabel: 'Go to customer',
-//             confirmLabel: 'I have arrived at customer',
-//             isCompleted: false,
-//           );
+    if (isDeliveryTask) {
+      switch (booking.status) {
+        case 'delivery_rider_assigned':
+        case 'delivery_pickup_started':
+        case 'delivery_in_progress':
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.goToDeliveryLaundryPickup,
+            title: 'Go to Laundry for Pickup',
+            description:
+                'Navigate to the laundry to collect the washed clothes before delivering to the customer.',
+            navigateLabel: 'Go to laundry',
+            confirmLabel: 'I have arrived at laundry',
+            isCompleted: false,
+          );
 
-//         // case 'arrived_at_customer':
-//         //   return const _TaskStageInfo(
-//         //     stage: RiderTaskStage.deliveryTaskDone,
-//         //     title: 'Complete Delivery',
-//         //     description:
-//         //         'You have reached the customer. Mark the delivery as completed after handing over the clothes.',
-//         //     navigateLabel: 'Arrived at customer',
-//         //     confirmLabel: 'Mark delivery completed',
-//         //     isCompleted: false,
-//         //   );
+        case 'arrived_at_laundry_for_delivery':
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.goToCustomerDropoff,
+            title: 'Go to Customer Drop-off',
+            description:
+                'You have collected the clothes from the laundry. Go to the customer and slide when the delivery is completed.',
+            navigateLabel: 'Go to customer',
+            confirmLabel: 'Arrived at customer',
+            isCompleted: false,
+          );
 
-//         case 'completed':
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.deliveryTaskDone,
-//             title: 'Delivery Completed',
-//             description: 'This delivery has been completed successfully.',
-//             navigateLabel: 'Delivery completed',
-//             confirmLabel: 'Delivery completed',
-//             isCompleted: true,
-//           );
+        // case 'arrived_at_customer':
+        //   return const _TaskStageInfo(
+        //     stage: RiderTaskStage.deliveryTaskDone,
+        //     title: 'Complete Delivery',
+        //     description:
+        //         'You have reached the customer. Mark the delivery as completed after handing over the clothes.',
+        //     navigateLabel: 'Arrived at customer',
+        //     confirmLabel: 'Mark delivery completed',
+        //     isCompleted: false,
+        //   );
 
-//         default:
-//           return const _TaskStageInfo(
-//             stage: RiderTaskStage.goToDeliveryLaundryPickup,
-//             title: 'Go to Laundry for Pickup',
-//             description:
-//                 'Navigate to the laundry to collect the washed clothes before delivering to the customer.',
-//             navigateLabel: 'Go to laundry',
-//             confirmLabel: 'I have arrived at laundry',
-//             isCompleted: false,
-//           );
-//       }
-//     }
+        case 'completed':
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.deliveryTaskDone,
+            title: 'Delivery Completed',
+            description: 'This delivery has been completed successfully.',
+            navigateLabel: 'Delivery completed',
+            confirmLabel: 'Delivery completed',
+            isCompleted: true,
+          );
 
-//     return const _TaskStageInfo(
-//       stage: RiderTaskStage.goToPickup,
-//       title: 'Task In Progress',
-//       description: 'Follow the active task steps.',
-//       navigateLabel: 'Continue',
-//       confirmLabel: 'Confirm',
-//       isCompleted: false,
-//     );
-//   }
+        default:
+          return const _TaskStageInfo(
+            stage: RiderTaskStage.goToDeliveryLaundryPickup,
+            title: 'Go to Laundry for Pickup',
+            description:
+                'Navigate to the laundry to collect the washed clothes before delivering to the customer.',
+            navigateLabel: 'Go to laundry',
+            confirmLabel: 'I have arrived at laundry',
+            isCompleted: false,
+          );
+      }
+    }
 
-//   static Future<void> _openDirectionsForStage({
-//     required BookingModel booking,
-//     required RiderTaskStage stage,
-//     required bool isPickupTask,
-//     required bool isDeliveryTask,
-//   }) async {
-//     double? latitude;
-//     double? longitude;
-//     String fallbackAddress = '';
+    return const _TaskStageInfo(
+      stage: RiderTaskStage.goToPickup,
+      title: 'Task In Progress',
+      description: 'Follow the active task steps.',
+      navigateLabel: 'Continue',
+      confirmLabel: 'Confirm',
+      isCompleted: false,
+    );
+  }
 
-//     if (isPickupTask) {
-//       if (stage == RiderTaskStage.goToPickup) {
-//         latitude = booking.deliveryLatitude;
-//         longitude = booking.deliveryLongitude;
-//         fallbackAddress = booking.customerAddress;
-//       } else {
-//         latitude = booking.laundrySnapshotLatitude;
-//         longitude = booking.laundrySnapshotLongitude;
-//         fallbackAddress = _laundryAddress(booking);
-//       }
-//     }
+  static Future<void> _openDirectionsForStage({
+    required BookingModel booking,
+    required RiderTaskStage stage,
+    required bool isPickupTask,
+    required bool isDeliveryTask,
+  }) async {
+    double? latitude;
+    double? longitude;
+    String fallbackAddress = '';
 
-//     if (isDeliveryTask) {
-//       if (stage == RiderTaskStage.goToDeliveryLaundryPickup) {
-//         latitude = booking.laundrySnapshotLatitude;
-//         longitude = booking.laundrySnapshotLongitude;
-//         fallbackAddress = _laundryAddress(booking);
-//       } else {
-//         latitude = booking.deliveryLatitude;
-//         longitude = booking.deliveryLongitude;
-//         fallbackAddress = booking.customerAddress;
-//       }
-//     }
+    if (isPickupTask) {
+      if (stage == RiderTaskStage.goToPickup) {
+        latitude = booking.deliveryLatitude;
+        longitude = booking.deliveryLongitude;
+        fallbackAddress = booking.customerAddress;
+      } else {
+        latitude = booking.laundrySnapshotLatitude;
+        longitude = booking.laundrySnapshotLongitude;
+        fallbackAddress = _laundryAddress(booking);
+      }
+    }
 
-//     if (latitude == null || longitude == null) {
-//       final encodedDestination = Uri.encodeComponent(fallbackAddress);
-//       final fallbackUri = Uri.parse(
-//         'https://www.google.com/maps/dir/?api=1&destination=$encodedDestination',
-//       );
-//       await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-//       return;
-//     }
+    if (isDeliveryTask) {
+      if (stage == RiderTaskStage.goToDeliveryLaundryPickup) {
+        latitude = booking.laundrySnapshotLatitude;
+        longitude = booking.laundrySnapshotLongitude;
+        fallbackAddress = _laundryAddress(booking);
+      } else {
+        latitude = booking.deliveryLatitude;
+        longitude = booking.deliveryLongitude;
+        fallbackAddress = booking.customerAddress;
+      }
+    }
 
-//     final googleMapsUri = Uri.parse('google.navigation:q=$latitude,$longitude');
+    if (latitude == null || longitude == null) {
+      final encodedDestination = Uri.encodeComponent(fallbackAddress);
+      final fallbackUri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$encodedDestination',
+      );
+      await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+      return;
+    }
 
-//     final fallbackUri = Uri.parse(
-//       'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
-//     );
+    final googleMapsUri = Uri.parse('google.navigation:q=$latitude,$longitude');
 
-//     if (await canLaunchUrl(googleMapsUri)) {
-//       await launchUrl(googleMapsUri, mode: LaunchMode.externalApplication);
-//     } else {
-//       await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-//     }
-//   }
+    final fallbackUri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
+    );
 
-//   static Future<void> _confirmStageArrival({
-//     required BookingModel booking,
-//     required RiderTaskStage stage,
-//     required bool isPickupTask,
-//     required bool isDeliveryTask,
-//   }) async {
-//     final bookingRef = FirebaseFirestore.instance
-//         .collection('bookings')
-//         .doc(booking.id);
+    if (await canLaunchUrl(googleMapsUri)) {
+      await launchUrl(googleMapsUri, mode: LaunchMode.externalApplication);
+    } else {
+      await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+    }
+  }
 
-//     final Map<String, dynamic> update = {
-//       'updatedAt': FieldValue.serverTimestamp(),
-//     };
+  static Future<void> _confirmStageArrival({
+    required BookingModel booking,
+    required RiderTaskStage stage,
+    required bool isPickupTask,
+    required bool isDeliveryTask,
+  }) async {
+    final bookingRef = FirebaseFirestore.instance
+        .collection('bookings')
+        .doc(booking.id);
 
-//     bool shouldCreateCompletedRide = false;
+    final Map<String, dynamic> update = {
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
 
-//     if (isPickupTask) {
-//       if (stage == RiderTaskStage.goToPickup) {
-//         update['status'] = 'arrived_at_pickup';
-//         update['timeline.arrivedAtPickupAt'] = FieldValue.serverTimestamp();
-//       } else if (stage == RiderTaskStage.goToDropoff) {
-//         update['status'] = 'arrived_at_laundry';
-//         update['timeline.arrivedAtLaundryAt'] = FieldValue.serverTimestamp();
+    bool shouldCreateCompletedRide = false;
 
-//         shouldCreateCompletedRide = true;
-//       } else {
-//         return;
-//       }
-//     } else if (isDeliveryTask) {
-//       if (stage == RiderTaskStage.goToDeliveryLaundryPickup) {
-//         update['status'] = 'arrived_at_laundry_for_delivery';
-//         update['timeline.arrivedAtLaundryForDeliveryAt'] =
-//             FieldValue.serverTimestamp();
-//         update['deliveryRider.arrivedAtLaundryAt'] =
-//             FieldValue.serverTimestamp();
-//       } else if (stage == RiderTaskStage.goToCustomerDropoff) {
-//         update['status'] = 'arrived_at_customer';
-//         update['timeline.arrivedAtCustomerAt'] = FieldValue.serverTimestamp();
-//         update['deliveryRider.arrivedAtCustomerAt'] =
-//             FieldValue.serverTimestamp();
-//       } else if (stage == RiderTaskStage.deliveryTaskDone) {
-//         update['status'] = 'completed';
-//         update['timeline.completedAt'] = FieldValue.serverTimestamp();
-//         update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
+    if (isPickupTask) {
+      if (stage == RiderTaskStage.goToPickup) {
+        update['status'] = 'arrived_at_pickup';
+        update['timeline.arrivedAtPickupAt'] = FieldValue.serverTimestamp();
+      } else if (stage == RiderTaskStage.goToDropoff) {
+        update['status'] = 'arrived_at_laundry';
+        update['timeline.arrivedAtLaundryAt'] = FieldValue.serverTimestamp();
 
-//         shouldCreateCompletedRide = true;
-//       } else {
-//         return;
-//       }
-//     } else {
-//       return;
-//     }
+        shouldCreateCompletedRide = true;
+      } else {
+        return;
+      }
+    } else if (isDeliveryTask) {
+      if (stage == RiderTaskStage.goToDeliveryLaundryPickup) {
+        update['status'] = 'arrived_at_laundry_for_delivery';
+        update['timeline.arrivedAtLaundryForDeliveryAt'] =
+            FieldValue.serverTimestamp();
+        update['deliveryRider.arrivedAtLaundryAt'] =
+            FieldValue.serverTimestamp();
+      } else if (stage == RiderTaskStage.goToCustomerDropoff) {
+        update['status'] = 'completed';
+        update['timeline.arrivedAtCustomerAt'] = FieldValue.serverTimestamp();
+        update['timeline.completedAt'] = FieldValue.serverTimestamp();
+        update['deliveryRider.arrivedAtCustomerAt'] =
+            FieldValue.serverTimestamp();
+        update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
 
-//     await FirebaseFirestore.instance.runTransaction((transaction) async {
-//       transaction.update(bookingRef, update);
+        shouldCreateCompletedRide = true;
+      } else if (stage == RiderTaskStage.deliveryTaskDone) {
+        update['status'] = 'completed';
+        update['timeline.completedAt'] = FieldValue.serverTimestamp();
+        update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
 
-//       if (shouldCreateCompletedRide) {
-//         final completedRideRef = FirebaseFirestore.instance
-//             .collection('completed_rides')
-//             .doc();
+        shouldCreateCompletedRide = true;
+      } else {
+        return;
+      }
+    } else {
+      return;
+    }
 
-//         transaction.set(completedRideRef, {
-//           'bookingId': booking.id,
-//           'riderId': isPickupTask
-//               ? booking.pickupRiderId
-//               : booking.deliveryRiderId,
-//           'role': isPickupTask ? 'pickup_rider' : 'delivery_rider',
-//           'pickup': _ridePickup(
-//             booking: booking,
-//             isPickupTask: isPickupTask,
-//             isDeliveryTask: isDeliveryTask,
-//           ),
-//           'dropoff': _rideDropoff(
-//             booking: booking,
-//             isPickupTask: isPickupTask,
-//             isDeliveryTask: isDeliveryTask,
-//           ),
-//           'customerId': booking.customerId,
-//           'customerName': booking.customerName,
-//           'completedAt': FieldValue.serverTimestamp(),
-//         });
-//       }
-//     });
-//   }
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      transaction.update(bookingRef, update);
 
-//   static Future<void> _makePhoneCall(String phoneNumber) async {
-//     final trimmed = phoneNumber.trim();
-//     if (trimmed.isEmpty) return;
+      if (shouldCreateCompletedRide) {
+        final completedRideRef = FirebaseFirestore.instance
+            .collection('completed_rides')
+            .doc();
 
-//     final uri = Uri.parse('tel:$trimmed');
+        transaction.set(completedRideRef, {
+          'bookingId': booking.id,
+          'riderId': isPickupTask
+              ? booking.pickupRiderId
+              : booking.deliveryRiderId,
+          'role': isPickupTask ? 'pickup_rider' : 'delivery_rider',
+          'pickup': _ridePickup(
+            booking: booking,
+            isPickupTask: isPickupTask,
+            isDeliveryTask: isDeliveryTask,
+          ),
+          'dropoff': _rideDropoff(
+            booking: booking,
+            isPickupTask: isPickupTask,
+            isDeliveryTask: isDeliveryTask,
+          ),
+          'customerId': booking.customerId,
+          'customerName': booking.customerName,
+          'completedAt': FieldValue.serverTimestamp(),
+          'status': 'completed',
+        });
+      }
+    });
+  }
 
-//     if (await canLaunchUrl(uri)) {
-//       await launchUrl(uri, mode: LaunchMode.externalApplication);
-//     }
-//   }
+  static Future<void> _makePhoneCall(String phoneNumber) async {
+    final trimmed = phoneNumber.trim();
+    if (trimmed.isEmpty) return;
 
-//   static Future<void> _showCompleteOrderDialog(BuildContext context) async {
-//     await showDialog<void>(
-//       context: context,
-//       barrierDismissible: true,
-//       builder: (_) {
-//         return Dialog(
-//           backgroundColor: Colors.transparent,
-//           insetPadding: const EdgeInsets.symmetric(horizontal: 26),
-//           child: Container(
-//             padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-//             decoration: BoxDecoration(
-//               color: Colors.white,
-//               borderRadius: BorderRadius.circular(28),
-//               boxShadow: const [
-//                 BoxShadow(
-//                   color: Color(0x22000000),
-//                   blurRadius: 28,
-//                   offset: Offset(0, 14),
-//                 ),
-//               ],
-//             ),
-//             child: Column(
-//               mainAxisSize: MainAxisSize.min,
-//               children: [
-//                 SizedBox(
-//                   height: 150,
-//                   width: 150,
-//                   child: Lottie.asset(
-//                     'assets/animations/completeOrder.json',
-//                     repeat: false,
-//                   ),
-//                 ),
-//                 const SizedBox(height: 10),
-//                 const Text(
-//                   'Task completed',
-//                   textAlign: TextAlign.center,
-//                   style: TextStyle(
-//                     fontSize: 20,
-//                     fontWeight: FontWeight.w900,
-//                     color: AppColors.textPrimary,
-//                   ),
-//                 ),
-//                 const SizedBox(height: 8),
-//                 const Text(
-//                   'Great work. This order step has been updated successfully.',
-//                   textAlign: TextAlign.center,
-//                   style: TextStyle(
-//                     fontSize: 14,
-//                     height: 1.45,
-//                     fontWeight: FontWeight.w500,
-//                     color: AppColors.textSecondary,
-//                   ),
-//                 ),
-//                 const SizedBox(height: 18),
-//                 SizedBox(
-//                   width: double.infinity,
-//                   child: ElevatedButton(
-//                     onPressed: () {
-//                       Navigator.pushNamedAndRemoveUntil(
-//                         context,
-//                         RouteNames.mainNavigation,
-//                         (route) => false,
-//                       );
-//                     },
-//                     style: ElevatedButton.styleFrom(
-//                       elevation: 0,
-//                       backgroundColor: const Color(0xFF3FC37A),
-//                       foregroundColor: Colors.white,
-//                       minimumSize: const Size.fromHeight(48),
-//                       shape: RoundedRectangleBorder(
-//                         borderRadius: BorderRadius.circular(16),
-//                       ),
-//                     ),
-//                     child: const Text(
-//                       'Done',
-//                       style: TextStyle(fontWeight: FontWeight.w800),
-//                     ),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ),
-//         );
-//       },
-//     );
-//   }
-// }
+    final uri = Uri.parse('tel:$trimmed');
 
-// enum RiderTaskStage {
-//   goToPickup,
-//   goToDropoff,
-//   pickupTaskDone,
-//   goToDeliveryLaundryPickup,
-//   goToCustomerDropoff,
-//   deliveryTaskDone,
-// }
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
-// class _TaskStageInfo {
-//   final RiderTaskStage stage;
-//   final String title;
-//   final String description;
-//   final String navigateLabel;
-//   final String confirmLabel;
-//   final bool isCompleted;
+  static Future<void> _showCompleteOrderDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 26),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 28,
+                  offset: Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 150,
+                  width: 150,
+                  child: Lottie.asset(
+                    'assets/animations/completeOrder.json',
+                    repeat: false,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Task completed',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Great work. This order step has been updated successfully.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        RouteNames.mainNavigation,
+                        (route) => false,
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: const Color(0xFF3FC37A),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
-//   const _TaskStageInfo({
-//     required this.stage,
-//     required this.title,
-//     required this.description,
-//     required this.navigateLabel,
-//     required this.confirmLabel,
-//     required this.isCompleted,
-//   });
-// }
+enum RiderTaskStage {
+  goToPickup,
+  goToDropoff,
+  pickupTaskDone,
+  goToDeliveryLaundryPickup,
+  goToCustomerDropoff,
+  deliveryTaskDone,
+}
+
+class _TaskStageInfo {
+  final RiderTaskStage stage;
+  final String title;
+  final String description;
+  final String navigateLabel;
+  final String confirmLabel;
+  final bool isCompleted;
+
+  const _TaskStageInfo({
+    required this.stage,
+    required this.title,
+    required this.description,
+    required this.navigateLabel,
+    required this.confirmLabel,
+    required this.isCompleted,
+  });
+}
 
 class _ParticipantContactCard extends StatelessWidget {
   final String name;
@@ -1151,657 +1161,4 @@ class _DetailRow extends StatelessWidget {
       ],
     );
   }
-}
-
-// import 'dart:async';
-
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:flutter/material.dart';
-// import 'package:lottie/lottie.dart';
-// import 'package:lundri_connect/core/constants/app_colors.dart';
-// import 'package:lundri_connect/widgets/loading_widget.dart';
-// import 'package:url_launcher/url_launcher.dart';
-
-// import '../../core/routes/route_names.dart';
-// import '../../models/booking_model.dart';
-// import '../others/chats_screen.dart';
-
-class RiderTaskDetailsScreen extends StatelessWidget {
-  final String bookingId;
-
-  const RiderTaskDetailsScreen({super.key, required this.bookingId});
-
-  @override
-  Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-
-    if (currentUser == null) {
-      return const Scaffold(
-        body: Center(
-          child: Text(
-            'You need to sign in again.',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-      );
-    }
-
-    final bookingStream = FirebaseFirestore.instance
-        .collection('bookings')
-        .doc(bookingId)
-        .snapshots();
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F4F6),
-      appBar: AppBar(
-        title: const Text('Task Details'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: AppColors.textPrimary,
-      ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: bookingStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const LoadingWidget(message: 'Loading task...');
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Failed to load task.\n${snapshot.error}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(
-              child: Text('Task not found.', style: TextStyle(fontSize: 15)),
-            );
-          }
-
-          final raw = snapshot.data!.data() ?? <String, dynamic>{};
-          final booking = BookingModel.fromMap(raw, snapshot.data!.id);
-
-          final bool isDeliveryTask =
-              booking.deliveryRiderId == currentUser.uid &&
-              _isDeliveryStatus(booking.status);
-
-          final bool isPickupTask =
-              booking.pickupRiderId == currentUser.uid && !isDeliveryTask;
-
-          if (!isPickupTask && !isDeliveryTask) {
-            return const Center(
-              child: Text(
-                'This task is not assigned to you.',
-                style: TextStyle(fontSize: 15),
-              ),
-            );
-          }
-
-          final stage = _buildStageInfo(
-            booking: booking,
-            isPickupTask: isPickupTask,
-            isDeliveryTask: isDeliveryTask,
-          );
-
-          final bool showLaundryContactCard =
-              isDeliveryTask ||
-              (isPickupTask &&
-                  (booking.status == 'arrived_at_pickup' ||
-                      booking.status == 'arrived_at_laundry'));
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _ParticipantContactCard(
-                  name: booking.customerName,
-                  phone: booking.customerPhone,
-                  photoUrl: booking.customerPhotoUrl,
-                  fallbackIcon: Icons.person_rounded,
-                  description: 'Contact the customer',
-                  onCall: () => _makePhoneCall(booking.customerPhone),
-                  onChat: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          booking: booking,
-                          currentUserRole: 'rider',
-                          otherParticipantRole: 'customer',
-                          otherParticipantId: booking.customerId,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                if (showLaundryContactCard) ...[
-                  const SizedBox(height: 14),
-                  _ParticipantContactCard(
-                    name: _laundryName(booking),
-                    phone: booking.laundrySnapshotPhone ?? '',
-                    photoUrl: booking.laundrySnapshotPhotoUrl ?? '',
-                    fallbackIcon: Icons.local_laundry_service_rounded,
-                    description: 'Contact the laundry',
-                    onCall: () =>
-                        _makePhoneCall(booking.laundrySnapshotPhone ?? ''),
-                    onChat: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            booking: booking,
-                            currentUserRole: 'rider',
-                            otherParticipantRole: 'laundry',
-                            otherParticipantId: booking.laundrySnapshotId,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-
-                const SizedBox(height: 14),
-
-                _DestinationSummaryCard(
-                  isPickupTask: isPickupTask,
-                  isDeliveryTask: isDeliveryTask,
-                  booking: booking,
-                ),
-
-                const SizedBox(height: 14),
-
-                _StageCard(
-                  title: stage.title,
-                  description: stage.description,
-                  primaryButtonText: stage.navigateLabel,
-                  secondaryButtonText: stage.confirmLabel,
-                  isActionComplete: stage.isCompleted,
-                  onNavigate: () => _openDirectionsForStage(
-                    booking: booking,
-                    stage: stage.stage,
-                    isPickupTask: isPickupTask,
-                    isDeliveryTask: isDeliveryTask,
-                  ),
-                  onConfirm: () async {
-                    await _confirmStageArrival(
-                      booking: booking,
-                      stage: stage.stage,
-                      isPickupTask: isPickupTask,
-                      isDeliveryTask: isDeliveryTask,
-                    );
-
-                    if (!context.mounted) return;
-
-                    final bool shouldShowCompleteCard =
-                        stage.stage == RiderTaskStage.goToDropoff ||
-                        stage.stage == RiderTaskStage.goToCustomerDropoff ||
-                        stage.stage == RiderTaskStage.deliveryTaskDone;
-
-                    if (shouldShowCompleteCard) {
-                      await _showCompleteOrderDialog(context);
-                    }
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  static bool _isDeliveryStatus(String status) {
-    final normalized = status.trim().toLowerCase();
-
-    const deliveryStatuses = {
-      'delivery_rider_assigned',
-      'delivery_pickup_started',
-      'delivery_in_progress',
-      'arrived_at_laundry_for_delivery',
-      'arrived_at_customer',
-      'completed',
-    };
-
-    return deliveryStatuses.contains(normalized);
-  }
-
-  static String _laundryName(BookingModel booking) {
-    return booking.laundrySnapshotName?.trim().isNotEmpty == true
-        ? booking.laundrySnapshotName!.trim()
-        : 'Laundry';
-  }
-
-  static String _laundryAddress(BookingModel booking) {
-    return booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
-        ? booking.laundrySnapshotAddressLine!.trim()
-        : booking.laundrySnapshotName?.trim().isNotEmpty == true
-        ? booking.laundrySnapshotName!.trim()
-        : 'Laundry address not available';
-  }
-
-  static String _ridePickup({
-    required BookingModel booking,
-    required bool isPickupTask,
-    required bool isDeliveryTask,
-  }) {
-    if (isPickupTask) return booking.customerAddress;
-    if (isDeliveryTask) return _laundryAddress(booking);
-    return booking.customerAddress;
-  }
-
-  static String _rideDropoff({
-    required BookingModel booking,
-    required bool isPickupTask,
-    required bool isDeliveryTask,
-  }) {
-    if (isPickupTask) return _laundryAddress(booking);
-    if (isDeliveryTask) return booking.customerAddress;
-    return _laundryAddress(booking);
-  }
-
-  static _TaskStageInfo _buildStageInfo({
-    required BookingModel booking,
-    required bool isPickupTask,
-    required bool isDeliveryTask,
-  }) {
-    if (isPickupTask) {
-      switch (booking.status) {
-        case 'pickup_started':
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.goToPickup,
-            title: 'Go to Pickup Point',
-            description:
-                'Navigate to the customer pickup point, then confirm once you arrive.',
-            navigateLabel: 'Go to pickup point',
-            confirmLabel: 'I have arrived at pickup point',
-            isCompleted: false,
-          );
-
-        case 'arrived_at_pickup':
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.goToDropoff,
-            title: 'Go to Laundry Drop-off',
-            description:
-                'You have reached the customer. Now head to the laundry drop-off point.',
-            navigateLabel: 'Go to laundry',
-            confirmLabel: 'I have arrived at laundry',
-            isCompleted: false,
-          );
-
-        case 'arrived_at_laundry':
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.pickupTaskDone,
-            title: 'Pickup Task Completed',
-            description:
-                'You have arrived at the laundry. This pickup leg is complete.',
-            navigateLabel: 'Pickup completed',
-            confirmLabel: 'Pickup completed',
-            isCompleted: true,
-          );
-
-        default:
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.goToPickup,
-            title: 'Go to Pickup Point',
-            description:
-                'Navigate to the customer pickup point, then confirm once you arrive.',
-            navigateLabel: 'Go to pickup point',
-            confirmLabel: 'I have arrived at pickup point',
-            isCompleted: false,
-          );
-      }
-    }
-
-    if (isDeliveryTask) {
-      switch (booking.status) {
-        case 'delivery_rider_assigned':
-        case 'delivery_pickup_started':
-        case 'delivery_in_progress':
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.goToDeliveryLaundryPickup,
-            title: 'Go to Laundry for Pickup',
-            description:
-                'Navigate to the laundry to collect the washed clothes before delivering to the customer.',
-            navigateLabel: 'Go to laundry',
-            confirmLabel: 'I have arrived at laundry',
-            isCompleted: false,
-          );
-
-        case 'arrived_at_laundry_for_delivery':
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.goToCustomerDropoff,
-            title: 'Go to Customer Drop-off',
-            description:
-                'You have collected the clothes from the laundry. Go to the customer and slide when the delivery is completed.',
-            navigateLabel: 'Go to customer',
-            confirmLabel: 'Arrived at customer',
-            isCompleted: false,
-          );
-
-        // case 'arrived_at_customer':
-        //   return const _TaskStageInfo(
-        //     stage: RiderTaskStage.deliveryTaskDone,
-        //     title: 'Complete Delivery',
-        //     description:
-        //         'You have reached the customer. Mark the delivery as completed after handing over the clothes.',
-        //     navigateLabel: 'Arrived at customer',
-        //     confirmLabel: 'Mark delivery completed',
-        //     isCompleted: false,
-        //   );
-
-        case 'completed':
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.deliveryTaskDone,
-            title: 'Delivery Completed',
-            description: 'This delivery has been completed successfully.',
-            navigateLabel: 'Delivery completed',
-            confirmLabel: 'Delivery completed',
-            isCompleted: true,
-          );
-
-        default:
-          return const _TaskStageInfo(
-            stage: RiderTaskStage.goToDeliveryLaundryPickup,
-            title: 'Go to Laundry for Pickup',
-            description:
-                'Navigate to the laundry to collect the washed clothes before delivering to the customer.',
-            navigateLabel: 'Go to laundry',
-            confirmLabel: 'I have arrived at laundry',
-            isCompleted: false,
-          );
-      }
-    }
-
-    return const _TaskStageInfo(
-      stage: RiderTaskStage.goToPickup,
-      title: 'Task In Progress',
-      description: 'Follow the active task steps.',
-      navigateLabel: 'Continue',
-      confirmLabel: 'Confirm',
-      isCompleted: false,
-    );
-  }
-
-  static Future<void> _openDirectionsForStage({
-    required BookingModel booking,
-    required RiderTaskStage stage,
-    required bool isPickupTask,
-    required bool isDeliveryTask,
-  }) async {
-    double? latitude;
-    double? longitude;
-    String fallbackAddress = '';
-
-    if (isPickupTask) {
-      if (stage == RiderTaskStage.goToPickup) {
-        latitude = booking.deliveryLatitude;
-        longitude = booking.deliveryLongitude;
-        fallbackAddress = booking.customerAddress;
-      } else {
-        latitude = booking.laundrySnapshotLatitude;
-        longitude = booking.laundrySnapshotLongitude;
-        fallbackAddress = _laundryAddress(booking);
-      }
-    }
-
-    if (isDeliveryTask) {
-      if (stage == RiderTaskStage.goToDeliveryLaundryPickup) {
-        latitude = booking.laundrySnapshotLatitude;
-        longitude = booking.laundrySnapshotLongitude;
-        fallbackAddress = _laundryAddress(booking);
-      } else {
-        latitude = booking.deliveryLatitude;
-        longitude = booking.deliveryLongitude;
-        fallbackAddress = booking.customerAddress;
-      }
-    }
-
-    if (latitude == null || longitude == null) {
-      final encodedDestination = Uri.encodeComponent(fallbackAddress);
-      final fallbackUri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=$encodedDestination',
-      );
-      await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    final googleMapsUri = Uri.parse('google.navigation:q=$latitude,$longitude');
-
-    final fallbackUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
-    );
-
-    if (await canLaunchUrl(googleMapsUri)) {
-      await launchUrl(googleMapsUri, mode: LaunchMode.externalApplication);
-    } else {
-      await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  static Future<void> _confirmStageArrival({
-    required BookingModel booking,
-    required RiderTaskStage stage,
-    required bool isPickupTask,
-    required bool isDeliveryTask,
-  }) async {
-    final bookingRef = FirebaseFirestore.instance
-        .collection('bookings')
-        .doc(booking.id);
-
-    final Map<String, dynamic> update = {
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    bool shouldCreateCompletedRide = false;
-
-    if (isPickupTask) {
-      if (stage == RiderTaskStage.goToPickup) {
-        update['status'] = 'arrived_at_pickup';
-        update['timeline.arrivedAtPickupAt'] = FieldValue.serverTimestamp();
-      } else if (stage == RiderTaskStage.goToDropoff) {
-        update['status'] = 'arrived_at_laundry';
-        update['timeline.arrivedAtLaundryAt'] = FieldValue.serverTimestamp();
-
-        shouldCreateCompletedRide = true;
-      } else {
-        return;
-      }
-    } else if (isDeliveryTask) {
-      if (stage == RiderTaskStage.goToDeliveryLaundryPickup) {
-        update['status'] = 'arrived_at_laundry_for_delivery';
-        update['timeline.arrivedAtLaundryForDeliveryAt'] =
-            FieldValue.serverTimestamp();
-        update['deliveryRider.arrivedAtLaundryAt'] =
-            FieldValue.serverTimestamp();
-      } else if (stage == RiderTaskStage.goToCustomerDropoff) {
-        update['status'] = 'completed';
-        update['timeline.arrivedAtCustomerAt'] = FieldValue.serverTimestamp();
-        update['timeline.completedAt'] = FieldValue.serverTimestamp();
-        update['deliveryRider.arrivedAtCustomerAt'] =
-            FieldValue.serverTimestamp();
-        update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
-
-        shouldCreateCompletedRide = true;
-      } else if (stage == RiderTaskStage.deliveryTaskDone) {
-        update['status'] = 'completed';
-        update['timeline.completedAt'] = FieldValue.serverTimestamp();
-        update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
-
-        shouldCreateCompletedRide = true;
-      } else {
-        return;
-      }
-    } else {
-      return;
-    }
-
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
-      transaction.update(bookingRef, update);
-
-      if (shouldCreateCompletedRide) {
-        final completedRideRef = FirebaseFirestore.instance
-            .collection('completed_rides')
-            .doc();
-
-        transaction.set(completedRideRef, {
-          'bookingId': booking.id,
-          'riderId': isPickupTask
-              ? booking.pickupRiderId
-              : booking.deliveryRiderId,
-          'role': isPickupTask ? 'pickup_rider' : 'delivery_rider',
-          'pickup': _ridePickup(
-            booking: booking,
-            isPickupTask: isPickupTask,
-            isDeliveryTask: isDeliveryTask,
-          ),
-          'dropoff': _rideDropoff(
-            booking: booking,
-            isPickupTask: isPickupTask,
-            isDeliveryTask: isDeliveryTask,
-          ),
-          'customerId': booking.customerId,
-          'customerName': booking.customerName,
-          'completedAt': FieldValue.serverTimestamp(),
-        });
-      }
-    });
-  }
-
-  static Future<void> _makePhoneCall(String phoneNumber) async {
-    final trimmed = phoneNumber.trim();
-    if (trimmed.isEmpty) return;
-
-    final uri = Uri.parse('tel:$trimmed');
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  static Future<void> _showCompleteOrderDialog(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 26),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x22000000),
-                  blurRadius: 28,
-                  offset: Offset(0, 14),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: 150,
-                  width: 150,
-                  child: Lottie.asset(
-                    'assets/animations/completeOrder.json',
-                    repeat: false,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Task completed',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Great work. This order step has been updated successfully.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.45,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pushNamedAndRemoveUntil(
-                        context,
-                        RouteNames.mainNavigation,
-                        (route) => false,
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      elevation: 0,
-                      backgroundColor: const Color(0xFF3FC37A),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text(
-                      'Done',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-enum RiderTaskStage {
-  goToPickup,
-  goToDropoff,
-  pickupTaskDone,
-  goToDeliveryLaundryPickup,
-  goToCustomerDropoff,
-  deliveryTaskDone,
-}
-
-class _TaskStageInfo {
-  final RiderTaskStage stage;
-  final String title;
-  final String description;
-  final String navigateLabel;
-  final String confirmLabel;
-  final bool isCompleted;
-
-  const _TaskStageInfo({
-    required this.stage,
-    required this.title,
-    required this.description,
-    required this.navigateLabel,
-    required this.confirmLabel,
-    required this.isCompleted,
-  });
 }

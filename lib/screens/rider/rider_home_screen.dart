@@ -576,40 +576,85 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
     await stopRequestRing();
 
-    await bookingRef.update({
-      'status': isPickupRequest
-          ? 'looking_for_pickup_rider'
-          : 'ready_for_dropoff',
-      'updatedAt': FieldValue.serverTimestamp(),
-      'riderRejection': {
+    final completedRideRef = FirebaseFirestore.instance
+        .collection('completed_rides')
+        .doc();
+
+    final String laundryAddress =
+        booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotAddressLine!.trim()
+        : booking.laundrySnapshotName?.trim().isNotEmpty == true
+        ? booking.laundrySnapshotName!.trim()
+        : 'Laundry address not available';
+
+    final String customerAddress = booking.customerAddress.trim().isNotEmpty
+        ? booking.customerAddress.trim()
+        : 'Customer address not available';
+
+    final String pickupAddress = isPickupRequest
+        ? customerAddress
+        : laundryAddress;
+
+    final String dropoffAddress = isPickupRequest
+        ? laundryAddress
+        : customerAddress;
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      transaction.update(bookingRef, {
+        'status': isPickupRequest
+            ? 'looking_for_pickup_rider'
+            : 'ready_for_dropoff',
+        'updatedAt': FieldValue.serverTimestamp(),
+        'riderRejection': {
+          'riderId': riderId,
+          'reason': reason,
+          'note': note,
+          'taskType': isPickupRequest ? 'pickup' : 'delivery',
+          'rejectedAt': FieldValue.serverTimestamp(),
+          'cancelledBy': 'rider',
+        },
+        if (isPickupRequest)
+          'pickupRider': {
+            'riderId': null,
+            'fullName': null,
+            'phoneNumber': null,
+            'photoUrl': null,
+            'vehicleType': null,
+            'plateNumber': null,
+            'assignedAt': null,
+            'pickedUpAt': null,
+          },
+        if (isDeliveryRequest)
+          'deliveryRider': {
+            'riderId': null,
+            'fullName': null,
+            'phoneNumber': null,
+            'photoUrl': null,
+            'vehicleType': null,
+            'plateNumber': null,
+            'assignedAt': null,
+            'deliveredAt': null,
+          },
+      });
+
+      transaction.set(completedRideRef, {
+        'bookingId': booking.id,
         'riderId': riderId,
-        'reason': reason,
-        'note': note,
-        'taskType': isPickupRequest ? 'pickup' : 'delivery',
-        'rejectedAt': FieldValue.serverTimestamp(),
-      },
-      if (isPickupRequest)
-        'pickupRider': {
-          'riderId': null,
-          'fullName': null,
-          'phoneNumber': null,
-          'photoUrl': null,
-          'vehicleType': null,
-          'plateNumber': null,
-          'assignedAt': null,
-          'pickedUpAt': null,
+        'role': isPickupRequest ? 'pickup_rider' : 'delivery_rider',
+        'pickup': pickupAddress,
+        'dropoff': dropoffAddress,
+        'customerId': booking.customerId,
+        'customerName': booking.customerName,
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'completedAt': FieldValue.serverTimestamp(),
+        'status': 'cancelled',
+        'cancellation': {
+          'reason': reason,
+          'note': note,
+          'cancelledBy': 'rider',
+          'taskType': isPickupRequest ? 'pickup' : 'delivery',
         },
-      if (isDeliveryRequest)
-        'deliveryRider': {
-          'riderId': null,
-          'fullName': null,
-          'phoneNumber': null,
-          'photoUrl': null,
-          'vehicleType': null,
-          'plateNumber': null,
-          'assignedAt': null,
-          'deliveredAt': null,
-        },
+      });
     });
   }
 }

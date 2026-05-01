@@ -239,7 +239,7 @@ class _LaundryHistoryView extends StatelessWidget {
   static Stream<List<BookingModel>> _streamLaundryHistory(String laundryId) {
     return FirebaseFirestore.instance
         .collection('bookings')
-        .where('status', whereIn: ['complete', 'completed'])
+        .where('status', whereIn: ['completed', 'cancelled'])
         .where('laundrySnapshot.id', isEqualTo: laundryId)
         .orderBy('updatedAt', descending: true)
         .limit(50)
@@ -267,6 +267,7 @@ class CompletedRideModel {
   final String bookingId;
   final String riderId;
   final String role;
+  final String status;
   final String pickup;
   final String dropoff;
   final String customerId;
@@ -278,6 +279,7 @@ class CompletedRideModel {
     required this.bookingId,
     required this.riderId,
     required this.role,
+    required this.status,
     required this.pickup,
     required this.dropoff,
     required this.customerId,
@@ -291,6 +293,7 @@ class CompletedRideModel {
       bookingId: _readString(map['bookingId']),
       riderId: _readString(map['riderId']),
       role: _readString(map['role']),
+      status: _readString(map['status']),
       pickup: _readString(map['pickup'], fallback: 'Pickup not available'),
       dropoff: _readString(map['dropoff'], fallback: 'Drop-off not available'),
       customerId: _readString(map['customerId']),
@@ -359,17 +362,27 @@ class _CompletedRideHistoryCard extends StatelessWidget {
             ],
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const CircleAvatar(
-                radius: 21,
-                backgroundColor: Color(0xFFE9F9EF),
-                child: Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFF3FC37A),
-                  size: 24,
-                ),
-              ),
+              ride.status != "cancelled"
+                  ? const CircleAvatar(
+                      radius: 21,
+                      backgroundColor: Color(0xFFE9F9EF),
+                      child: Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF3FC37A),
+                        size: 24,
+                      ),
+                    )
+                  : CircleAvatar(
+                      radius: 21,
+                      backgroundColor: const Color(0xFFFFEAEA), // light red
+                      child: const Icon(
+                        Icons.cancel_rounded, // or Icons.close
+                        color: Color(0xFFE53935), // red
+                        size: 24,
+                      ),
+                    ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -441,14 +454,6 @@ class _LaundryHistoryBookingCard extends StatelessWidget {
     final DateTime? time =
         booking.updatedAt ?? booking.requestedAt ?? booking.createdAt;
 
-    final pickup = booking.pickupAddress.trim().isEmpty
-        ? 'Pickup'
-        : booking.pickupAddress.trim();
-
-    final dropoff = booking.customerAddress.trim().isEmpty
-        ? 'Drop-off'
-        : booking.customerAddress.trim();
-
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -468,31 +473,53 @@ class _LaundryHistoryBookingCard extends StatelessWidget {
             ],
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const CircleAvatar(
-                radius: 21,
-                backgroundColor: Color(0xFFE9F9EF),
-                child: Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFF3FC37A),
-                  size: 24,
-                ),
-              ),
+              booking.status == "cancelled"
+                  ? CircleAvatar(
+                      radius: 21,
+                      backgroundColor: const Color(0xFFFFEAEA), // light red
+                      child: const Icon(
+                        Icons.cancel_rounded, // or Icons.close
+                        color: Color(0xFFE53935), // red
+                        size: 24,
+                      ),
+                    )
+                  : const CircleAvatar(
+                      radius: 21,
+                      backgroundColor: Color(0xFFE9F9EF),
+                      child: Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF3FC37A),
+                        size: 24,
+                      ),
+                    ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  '$pickup - $dropoff',
-                  softWrap: true,
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    height: 1.35,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      booking.customerName,
+                      softWrap: true,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      booking.serviceType == "wash_fold"
+                          ? "Wash & Fold"
+                          : 'Wash & Iron',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -585,11 +612,11 @@ class CompletedRideHistoryDetailsScreen extends StatelessWidget {
                 label: 'Customer',
                 value: ride.customerName,
               ),
-              _DetailsRow(
-                icon: Icons.assignment_outlined,
-                label: 'Booking ID',
-                value: ride.bookingId,
-              ),
+              // _DetailsRow(
+              //   icon: Icons.assignment_outlined,
+              //   label: 'Booking ID',
+              //   value: ride.bookingId,
+              // ),
               _DetailsRow(
                 icon: Icons.delivery_dining_rounded,
                 label: 'Role',

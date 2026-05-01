@@ -121,7 +121,7 @@ class LaundryProfileScreen extends StatelessWidget {
             title: 'History',
             subtitle: 'See your completed orders',
             onTap: () {
-              Navigator.pushNamed(context, RouteNames.riderHistory);
+              Navigator.pushNamed(context, RouteNames.laundryHistory);
             },
           ),
           const SizedBox(height: 12),

@@ -17,8 +17,16 @@ class BookingHistoryDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final completedAt =
-        booking.updatedAt ?? booking.requestedAt ?? booking.createdAt;
+    final finalTime =
+        booking.completedAt ??
+        booking.cancelledAt ??
+        booking.updatedAt ??
+        booking.requestedAt ??
+        booking.createdAt;
+
+    final addOns = booking.selectedAddOns.isEmpty
+        ? 'None'
+        : booking.selectedAddOns.map((e) => e.replaceAll('_', ' ')).join(', ');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F4F6),
@@ -32,11 +40,12 @@ class BookingHistoryDetailsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
           _DetailsHeaderCard(
-            title: booking.customerName.isEmpty
-                ? 'Order Details'
-                : booking.customerName,
+            title: booking.bookingCode.isNotEmpty
+                ? booking.bookingCode
+                : 'Customer Order',
+            subtitle: booking.customerName,
             status: booking.status,
-            amount: 'GHS ${booking.totalPrice}',
+            amount: '${booking.currency} ${booking.totalPrice}',
           ),
           const SizedBox(height: 14),
 
@@ -45,14 +54,26 @@ class BookingHistoryDetailsScreen extends StatelessWidget {
             children: [
               _DetailsRow(
                 icon: Icons.location_on_outlined,
-                label: 'Pickup',
+                label: 'Customer Pickup',
                 value: booking.pickupAddress,
               ),
+              if (booking.pickupSubtitle.isNotEmpty)
+                _DetailsRow(
+                  icon: Icons.place_outlined,
+                  label: 'Pickup Area',
+                  value: booking.pickupSubtitle,
+                ),
               _DetailsRow(
                 icon: Icons.outlined_flag_rounded,
-                label: 'Drop-off',
+                label: 'Customer Drop-off',
                 value: booking.customerAddress,
               ),
+              if (booking.deliverySubtitle.isNotEmpty)
+                _DetailsRow(
+                  icon: Icons.place_outlined,
+                  label: 'Drop-off Area',
+                  value: booking.deliverySubtitle,
+                ),
             ],
           ),
 
@@ -67,19 +88,45 @@ class BookingHistoryDetailsScreen extends StatelessWidget {
                 value: booking.serviceType.replaceAll('_', ' '),
               ),
               _DetailsRow(
+                icon: Icons.add_circle_outline_rounded,
+                label: 'Add-ons',
+                value: addOns,
+              ),
+              _DetailsRow(
                 icon: Icons.scale_outlined,
                 label: 'Weight',
-                value: '${booking.estimatedWeightKg} kg',
+                value: booking.actualWeightKg != null
+                    ? '${booking.actualWeightKg} kg actual'
+                    : '${booking.estimatedWeightKg} kg estimated',
               ),
+              if (booking.customerNotes.trim().isNotEmpty)
+                _DetailsRow(
+                  icon: Icons.notes_rounded,
+                  label: 'Customer Notes',
+                  value: booking.customerNotes,
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          _DetailsSection(
+            title: 'Pricing',
+            children: [
               _DetailsRow(
                 icon: Icons.payments_outlined,
-                label: 'Amount',
-                value: 'GHS ${booking.totalPrice}',
+                label: 'Base Price',
+                value: '${booking.currency} ${booking.basePrice}',
               ),
               _DetailsRow(
-                icon: Icons.access_time_rounded,
-                label: 'Time',
-                value: _formatFullDateTime(completedAt),
+                icon: Icons.add_card_rounded,
+                label: 'Add-ons',
+                value: '${booking.currency} ${booking.addOnsPrice}',
+              ),
+              _DetailsRow(
+                icon: Icons.receipt_long_rounded,
+                label: 'Total',
+                value: '${booking.currency} ${booking.totalPrice}',
               ),
             ],
           ),
@@ -87,23 +134,147 @@ class BookingHistoryDetailsScreen extends StatelessWidget {
           const SizedBox(height: 14),
 
           _DetailsSection(
-            title: 'People',
+            title: 'Customer',
             children: [
               _DetailsRow(
                 icon: Icons.person_outline_rounded,
-                label: 'Customer',
+                label: 'Name',
                 value: booking.customerName,
               ),
               _DetailsRow(
                 icon: Icons.phone_outlined,
-                label: 'Customer Phone',
+                label: 'Phone',
                 value: booking.customerPhone,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          _DetailsSection(
+            title: 'Riders',
+            children: [
+              _DetailsRow(
+                icon: Icons.two_wheeler_rounded,
+                label: 'Pickup Rider',
+                value: _riderText(
+                  name: booking.pickupRiderName,
+                  phone: booking.pickupRiderPhone,
+                  vehicle: booking.pickupRiderVehicleType,
+                  plate: booking.pickupRiderPlateNumber,
+                ),
+              ),
+              _DetailsRow(
+                icon: Icons.delivery_dining_rounded,
+                label: 'Delivery Rider',
+                value: _riderText(
+                  name: booking.deliveryRiderName,
+                  phone: booking.deliveryRiderPhone,
+                  vehicle: booking.deliveryRiderVehicleType,
+                  plate: booking.deliveryRiderPlateNumber,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          _DetailsSection(
+            title: 'Payment',
+            children: [
+              _DetailsRow(
+                icon: Icons.account_balance_wallet_outlined,
+                label: 'Method',
+                value: booking.paymentMethod,
+              ),
+              _DetailsRow(
+                icon: Icons.verified_outlined,
+                label: 'Status',
+                value: booking.paymentStatus,
+              ),
+              if ((booking.paymentTransactionRef ?? '').trim().isNotEmpty)
+                _DetailsRow(
+                  icon: Icons.confirmation_number_outlined,
+                  label: 'Reference',
+                  value: booking.paymentTransactionRef ?? '',
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          _DetailsSection(
+            title: 'Timeline',
+            children: [
+              _DetailsRow(
+                icon: Icons.schedule_rounded,
+                label: 'Requested',
+                value: _formatFullDateTime(booking.requestedAt),
+              ),
+              if (booking.acceptedAt != null)
+                _DetailsRow(
+                  icon: Icons.check_circle_outline_rounded,
+                  label: 'Accepted',
+                  value: _formatFullDateTime(booking.acceptedAt),
+                ),
+              if (booking.pickupStartedAt != null)
+                _DetailsRow(
+                  icon: Icons.directions_bike_rounded,
+                  label: 'Pickup Started',
+                  value: _formatFullDateTime(booking.pickupStartedAt),
+                ),
+              if (booking.arrivedAtLaundryAt != null)
+                _DetailsRow(
+                  icon: Icons.storefront_rounded,
+                  label: 'Arrived At Laundry',
+                  value: _formatFullDateTime(booking.arrivedAtLaundryAt),
+                ),
+              if (booking.processingStartedAt != null)
+                _DetailsRow(
+                  icon: Icons.local_laundry_service_rounded,
+                  label: 'Processing Started',
+                  value: _formatFullDateTime(booking.processingStartedAt),
+                ),
+              if (booking.readyForDropoffAt != null)
+                _DetailsRow(
+                  icon: Icons.inventory_2_outlined,
+                  label: 'Ready For Drop-off',
+                  value: _formatFullDateTime(booking.readyForDropoffAt),
+                ),
+              if (booking.deliveryStartedAt != null)
+                _DetailsRow(
+                  icon: Icons.local_shipping_outlined,
+                  label: 'Delivery Started',
+                  value: _formatFullDateTime(booking.deliveryStartedAt),
+                ),
+              _DetailsRow(
+                icon: booking.isCancelled
+                    ? Icons.cancel_outlined
+                    : Icons.done_all_rounded,
+                label: booking.isCancelled ? 'Cancelled' : 'Final Update',
+                value: _formatFullDateTime(finalTime),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  static String _riderText({
+    required String? name,
+    required String? phone,
+    required String? vehicle,
+    required String? plate,
+  }) {
+    final parts = <String>[
+      if ((name ?? '').trim().isNotEmpty) name!.trim(),
+      if ((phone ?? '').trim().isNotEmpty) phone!.trim(),
+      if ((vehicle ?? '').trim().isNotEmpty) vehicle!.trim(),
+      if ((plate ?? '').trim().isNotEmpty) plate!.trim(),
+    ];
+
+    return parts.isEmpty ? '—' : parts.join(' • ');
   }
 
   static String _formatFullDateTime(DateTime? value) {
@@ -133,17 +304,21 @@ class BookingHistoryDetailsScreen extends StatelessWidget {
 
 class _DetailsHeaderCard extends StatelessWidget {
   final String title;
+  final String subtitle;
   final String status;
   final String amount;
 
   const _DetailsHeaderCard({
     required this.title,
+    required this.subtitle,
     required this.status,
     required this.amount,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cleanStatus = status.replaceAll('_', ' ');
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -167,20 +342,29 @@ class _DetailsHeaderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title.trim().isEmpty ? 'Order Details' : title.trim(),
+                  title.trim().isEmpty ? 'Customer Order' : title.trim(),
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
                 Text(
-                  status.replaceAll('_', ' '),
+                  subtitle.trim().isEmpty ? 'Customer' : subtitle.trim(),
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  cleanStatus,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
                   ),
                 ),
               ],

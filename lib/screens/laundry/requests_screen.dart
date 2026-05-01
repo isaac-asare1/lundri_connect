@@ -750,9 +750,14 @@ class _ActiveOrderCard extends StatelessWidget {
 
   const _ActiveOrderCard({required this.booking, required this.onTap});
 
+  bool get showWeightUpdatingMessage {
+    final normalized = booking.status.trim().toLowerCase();
+    return normalized == 'arrived_at_laundry';
+  }
+
   bool get _showRequestDeliverySlider {
     final normalized = booking.status.trim().toLowerCase();
-    return normalized == 'processing' || normalized == 'arrived_at_laundry';
+    return normalized == 'processing' || normalized == 'ready_for_dropoff';
   }
 
   @override
@@ -812,7 +817,42 @@ class _ActiveOrderCard extends StatelessWidget {
               ),
               if (_showRequestDeliverySlider) ...[
                 const SizedBox(height: 16),
-                _RequestDeliveryRiderSlider(bookingId: booking.id),
+                _RequestDeliveryRiderSlider(
+                  bookingId: booking.id,
+                  currentStatus: booking.status,
+                ),
+              ],
+              if (showWeightUpdatingMessage) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 18,
+                        color: Color(0xFFB45309),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Please ensure the laundry is weighed and the booking weight is updated before commencing work.',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            height: 1.45,
+                            color: Color(0xFF92400E),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ],
           ),
@@ -822,10 +862,163 @@ class _ActiveOrderCard extends StatelessWidget {
   }
 }
 
+// class _RequestDeliveryRiderSlider extends StatefulWidget {
+//   final String bookingId;
+
+//   const _RequestDeliveryRiderSlider({required this.bookingId});
+
+//   @override
+//   State<_RequestDeliveryRiderSlider> createState() =>
+//       _RequestDeliveryRiderSliderState();
+// }
+
+// class _RequestDeliveryRiderSliderState
+//     extends State<_RequestDeliveryRiderSlider> {
+//   double _dragDx = 0;
+//   bool _isSubmitting = false;
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return LayoutBuilder(
+//       builder: (context, constraints) {
+//         const double cardHeight = 64;
+//         const double knobSize = 46;
+//         const double horizontalPadding = 8;
+
+//         final double maxTravel =
+//             constraints.maxWidth - knobSize - (horizontalPadding * 2);
+
+//         final double knobLeft = _dragDx.clamp(0.0, maxTravel);
+
+//         return Container(
+//           height: cardHeight,
+//           width: double.infinity,
+//           decoration: BoxDecoration(
+//             color: const Color(0xFF3FC37A),
+//             borderRadius: BorderRadius.circular(18),
+//           ),
+//           child: Stack(
+//             children: [
+//               Center(
+//                 child: AnimatedOpacity(
+//                   duration: const Duration(milliseconds: 180),
+//                   opacity: _isSubmitting ? 0.55 : 1,
+//                   child: const Text(
+//                     'Request for delivery rider',
+//                     style: TextStyle(
+//                       color: Colors.white,
+//                       fontSize: 15,
+//                       fontWeight: FontWeight.w700,
+//                     ),
+//                   ),
+//                 ),
+//               ),
+//               Positioned(
+//                 left: horizontalPadding + knobLeft,
+//                 top: 9,
+//                 child: GestureDetector(
+//                   onHorizontalDragUpdate: _isSubmitting
+//                       ? null
+//                       : (details) {
+//                           setState(() {
+//                             _dragDx += details.delta.dx;
+//                           });
+//                         },
+//                   onHorizontalDragEnd: _isSubmitting
+//                       ? null
+//                       : (_) async {
+//                           final shouldTrigger = knobLeft > maxTravel * 0.60;
+
+//                           setState(() => _dragDx = 0);
+
+//                           if (!shouldTrigger) return;
+
+//                           setState(() => _isSubmitting = true);
+
+//                           try {
+//                             await FirebaseFirestore.instance
+//                                 .collection('bookings')
+//                                 .doc(widget.bookingId)
+//                                 .update({
+//                                   'status': 'ready_for_dropoff',
+//                                   'updatedAt': FieldValue.serverTimestamp(),
+//                                   'timeline.readyForDropoffAt':
+//                                       FieldValue.serverTimestamp(),
+//                                 });
+
+//                             if (!mounted) return;
+
+//                             ScaffoldMessenger.of(context)
+//                               ..hideCurrentSnackBar()
+//                               ..showSnackBar(
+//                                 const SnackBar(
+//                                   content: Text(
+//                                     'Delivery rider request started.',
+//                                   ),
+//                                   behavior: SnackBarBehavior.floating,
+//                                 ),
+//                               );
+//                           } catch (e) {
+//                             if (!mounted) return;
+
+//                             ScaffoldMessenger.of(context)
+//                               ..hideCurrentSnackBar()
+//                               ..showSnackBar(
+//                                 SnackBar(
+//                                   content: Text(
+//                                     'Failed to request delivery rider: $e',
+//                                   ),
+//                                   behavior: SnackBarBehavior.floating,
+//                                 ),
+//                               );
+//                           } finally {
+//                             if (mounted) {
+//                               setState(() => _isSubmitting = false);
+//                             }
+//                           }
+//                         },
+//                   child: AnimatedContainer(
+//                     duration: const Duration(milliseconds: 160),
+//                     width: knobSize,
+//                     height: knobSize,
+//                     decoration: BoxDecoration(
+//                       color: Colors.white.withOpacity(0.18),
+//                       borderRadius: BorderRadius.circular(14),
+//                     ),
+//                     child: _isSubmitting
+//                         ? const Padding(
+//                             padding: EdgeInsets.all(12),
+//                             child: CircularProgressIndicator(
+//                               strokeWidth: 2.2,
+//                               valueColor: AlwaysStoppedAnimation<Color>(
+//                                 Colors.white,
+//                               ),
+//                             ),
+//                           )
+//                         : const Icon(
+//                             Icons.keyboard_double_arrow_right_rounded,
+//                             color: Colors.white,
+//                             size: 24,
+//                           ),
+//                   ),
+//                 ),
+//               ),
+//             ],
+//           ),
+//         );
+//       },
+//     );
+//   }
+// }
+
 class _RequestDeliveryRiderSlider extends StatefulWidget {
   final String bookingId;
+  final String currentStatus;
 
-  const _RequestDeliveryRiderSlider({required this.bookingId});
+  const _RequestDeliveryRiderSlider({
+    required this.bookingId,
+    required this.currentStatus,
+  });
 
   @override
   State<_RequestDeliveryRiderSlider> createState() =>
@@ -836,6 +1029,8 @@ class _RequestDeliveryRiderSliderState
     extends State<_RequestDeliveryRiderSlider> {
   double _dragDx = 0;
   bool _isSubmitting = false;
+
+  bool get _isDeliveryRequested => widget.currentStatus == 'ready_for_dropoff';
 
   @override
   Widget build(BuildContext context) {
@@ -848,13 +1043,16 @@ class _RequestDeliveryRiderSliderState
         final double maxTravel =
             constraints.maxWidth - knobSize - (horizontalPadding * 2);
 
-        final double knobLeft = _dragDx.clamp(0.0, maxTravel);
+        final double restingLeft = _isDeliveryRequested ? maxTravel : 0;
+        final double knobLeft = (restingLeft + _dragDx).clamp(0.0, maxTravel);
 
         return Container(
           height: cardHeight,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: const Color(0xFF3FC37A),
+            color: _isDeliveryRequested
+                ? const Color(0xFFFF5B8A)
+                : const Color(0xFF3FC37A),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Stack(
@@ -863,9 +1061,11 @@ class _RequestDeliveryRiderSliderState
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 180),
                   opacity: _isSubmitting ? 0.55 : 1,
-                  child: const Text(
-                    'Request for delivery rider',
-                    style: TextStyle(
+                  child: Text(
+                    _isDeliveryRequested
+                        ? 'Slide left to cancel request'
+                        : 'Request for delivery rider',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -887,55 +1087,21 @@ class _RequestDeliveryRiderSliderState
                   onHorizontalDragEnd: _isSubmitting
                       ? null
                       : (_) async {
-                          final shouldTrigger = knobLeft > maxTravel * 0.60;
+                          final bool shouldRequest =
+                              !_isDeliveryRequested &&
+                              knobLeft > maxTravel * 0.60;
+
+                          final bool shouldCancel =
+                              _isDeliveryRequested &&
+                              knobLeft < maxTravel * 0.40;
 
                           setState(() => _dragDx = 0);
 
-                          if (!shouldTrigger) return;
+                          if (!shouldRequest && !shouldCancel) return;
 
-                          setState(() => _isSubmitting = true);
-
-                          try {
-                            await FirebaseFirestore.instance
-                                .collection('bookings')
-                                .doc(widget.bookingId)
-                                .update({
-                                  'status': 'ready_for_dropoff',
-                                  'updatedAt': FieldValue.serverTimestamp(),
-                                  'timeline.readyForDropoffAt':
-                                      FieldValue.serverTimestamp(),
-                                });
-
-                            if (!mounted) return;
-
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Delivery rider request started.',
-                                  ),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                          } catch (e) {
-                            if (!mounted) return;
-
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Failed to request delivery rider: $e',
-                                  ),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                          } finally {
-                            if (mounted) {
-                              setState(() => _isSubmitting = false);
-                            }
-                          }
+                          await _updateDeliveryRequest(
+                            requestDelivery: shouldRequest,
+                          );
                         },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 160),
@@ -955,8 +1121,10 @@ class _RequestDeliveryRiderSliderState
                               ),
                             ),
                           )
-                        : const Icon(
-                            Icons.keyboard_double_arrow_right_rounded,
+                        : Icon(
+                            _isDeliveryRequested
+                                ? Icons.keyboard_double_arrow_left_rounded
+                                : Icons.keyboard_double_arrow_right_rounded,
                             color: Colors.white,
                             size: 24,
                           ),
@@ -968,6 +1136,71 @@ class _RequestDeliveryRiderSliderState
         );
       },
     );
+  }
+
+  Future<void> _updateDeliveryRequest({required bool requestDelivery}) async {
+    setState(() => _isSubmitting = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(widget.bookingId)
+          .update({
+            'status': requestDelivery ? 'ready_for_dropoff' : 'processing',
+            'updatedAt': FieldValue.serverTimestamp(),
+
+            if (requestDelivery)
+              'timeline.readyForDropoffAt': FieldValue.serverTimestamp(),
+
+            if (!requestDelivery) ...{
+              'timeline.readyForDropoffAt': null,
+              'deliveryRider': {
+                'riderId': null,
+                'fullName': null,
+                'phoneNumber': null,
+                'photoUrl': null,
+                'vehicleType': null,
+                'plateNumber': null,
+                'assignedAt': null,
+                'deliveredAt': null,
+              },
+            },
+          });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              requestDelivery
+                  ? 'Delivery rider request started.'
+                  : 'Delivery rider request cancelled.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              requestDelivery
+                  ? 'Failed to request delivery rider: $e'
+                  : 'Failed to cancel delivery request: $e',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 }
 
@@ -1388,10 +1621,9 @@ class OperatorOrdersService {
     'arrived_at_pickup',
     'arrived_at_laundry',
     'processing',
-    'arrived_at_laundry_for_delivery',
     'ready_for_dropoff',
+    'arrived_at_laundry_for_delivery',
     'delivery_in_progress',
-    'completed',
   ];
 
   Stream<List<BookingModel>> streamNewOrders(String laundryId) {

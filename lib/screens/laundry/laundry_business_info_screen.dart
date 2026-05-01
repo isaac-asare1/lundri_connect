@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -529,6 +530,11 @@ class _LaundryBusinessInfoScreenState extends State<LaundryBusinessInfoScreen> {
       final name = _businessNameController.text.trim();
       final address = _addressController.text.trim();
 
+      final latitude = _selectedLatitude!;
+      final longitude = _selectedLongitude!;
+
+      final geoFirePoint = GeoFirePoint(GeoPoint(latitude, longitude));
+
       await docRef.set({
         'id': _laundryId,
         'role': 'laundry',
@@ -559,6 +565,8 @@ class _LaundryBusinessInfoScreenState extends State<LaundryBusinessInfoScreen> {
           'latitude': _selectedLatitude,
           'longitude': _selectedLongitude,
           'lastUpdatedAt': FieldValue.serverTimestamp(),
+          'geohash': geoFirePoint.geohash,
+          'geopoint': geoFirePoint.geopoint,
         },
 
         'business': {
