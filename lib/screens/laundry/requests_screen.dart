@@ -239,12 +239,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                       await stopRequestRing();
 
                       await _ordersService.rejectOrder(
-                        bookingId: booking.id,
+                        booking: booking,
                         laundryId: laundryId,
                         reason: reason,
                         note: note,
                       );
-
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -1554,92 +1553,487 @@ class OperatorOrdersService {
       throw Exception('Current user is null.');
     }
 
-    final laundryDoc = await _firestore
-        .collection('laundries')
-        .doc(currentUser.id)
-        .get();
+    final laundryRef = _firestore.collection('laundries').doc(currentUser.id);
+    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+    final laundryDoc = await laundryRef.get();
+
+    if (!laundryDoc.exists) {
+      throw Exception('Laundry profile was not found.');
+    }
 
     final laundryData = laundryDoc.data() ?? <String, dynamic>{};
+
     final profile = _asMap(laundryData['profile']);
     final contact = _asMap(laundryData['contact']);
     final location = _asMap(laundryData['location']);
+    final ratings = _asMap(laundryData['ratings']);
 
     final laundryName = _readString(profile['name']) ?? currentUser.fullName;
     final laundryPhone =
         _readString(contact['phoneNumber']) ?? currentUser.phoneNumber;
-    final laundryPhotoUrl = _readString(profile['photoUrl']) ?? '';
+    final whatsappNumber = _readString(contact['whatsappNumber']) ?? '';
+    final laundryPhotoUrl =
+        _readString(profile['photoUrl']) ??
+        _readString(profile['logoUrl']) ??
+        '';
     final laundryAddressLine = _readString(location['addressLine']) ?? '';
-    final latitude = _readString(location['latitude']);
-    final longitude = _readString(location['longitude']);
+    final geohash = _readString(location['geohash']) ?? '';
+    final geopoint = _readGeoPoint(location['geopoint']);
+    final rating = _readNum(ratings['rating']);
+    final totalRatings = _readInt(ratings['totalRatings']);
 
-    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+    await _firestore.runTransaction((transaction) async {
+      final bookingSnap = await transaction.get(bookingRef);
 
-    await bookingRef.update({
-      'status': 'looking_for_pickup_rider',
-      'updatedAt': FieldValue.serverTimestamp(),
-      'timeline.acceptedAt': FieldValue.serverTimestamp(),
-      'laundryAssignment.assignedAutomatically': true,
-      'laundryAssignment.assignedAt': FieldValue.serverTimestamp(),
-      'laundrySnapshot.id': currentUser.id,
-      'laundrySnapshot.laundryName': laundryName,
-      'laundrySnapshot.laundryPhone': laundryPhone,
-      'laundrySnapshot.laundryPhotoUrl': laundryPhotoUrl,
-      'laundrySnapshot.addressLine': laundryAddressLine,
-      'laundrySnapshot.latitude': latitude,
-      'laundrySnapshot.longitude': longitude,
-    });
+      if (!bookingSnap.exists) {
+        throw Exception('Booking was not found.');
+      }
 
-    await bookingRef.collection('status_history').add({
-      'status': 'looking_for_pickup_rider',
-      'title': 'Laundry Accepted',
-      'description':
-          'The laundry accepted this booking and the system is now looking for a pickup rider.',
-      'createdAt': FieldValue.serverTimestamp(),
+      final bookingData = bookingSnap.data();
+      if (bookingData == null) {
+        throw Exception('Booking data is missing.');
+      }
+
+      final status = _readString(bookingData['status']) ?? '';
+      final laundrySnapshot = _asMap(bookingData['laundrySnapshot']);
+      final currentLaundryId =
+          _readString(laundrySnapshot['id']) ??
+          _readString(laundrySnapshot['laundryId']);
+
+      final laundryOffer = _asMap(bookingData['laundryOffer']);
+      final offeredLaundryId = _readString(laundryOffer['offeredLaundryId']);
+
+      final isAssignedToThisLaundry =
+          currentLaundryId == currentUser.id ||
+          offeredLaundryId == currentUser.id;
+
+      final canAccept =
+          status == 'offered_to_laundry' ||
+          status == 'awaiting_laundry_acceptance' ||
+          status == 'pending';
+
+      if (!canAccept || !isAssignedToThisLaundry) {
+        throw Exception('This order is no longer available for this laundry.');
+      }
+
+      transaction.update(bookingRef, {
+        'status': 'looking_for_pickup_rider',
+        'updatedAt': FieldValue.serverTimestamp(),
+
+        'timeline.acceptedAt': FieldValue.serverTimestamp(),
+
+        'laundryAssignment.assignedAutomatically': true,
+        'laundryAssignment.assignedAt': FieldValue.serverTimestamp(),
+
+        // Correct snapshot fields used by your model and Cloud Function.
+        'laundrySnapshot.id': currentUser.id,
+        'laundrySnapshot.name': laundryName,
+        'laundrySnapshot.phoneNumber': laundryPhone,
+        'laundrySnapshot.whatsappNumber': whatsappNumber,
+        'laundrySnapshot.photoUrl': laundryPhotoUrl,
+        'laundrySnapshot.addressLine': laundryAddressLine,
+        'laundrySnapshot.geohash': geohash,
+        'laundrySnapshot.geopoint': geopoint,
+        'laundrySnapshot.rating': rating,
+        'laundrySnapshot.totalRatings': totalRatings,
+        'laundrySnapshot.capturedAt': FieldValue.serverTimestamp(),
+
+        // Clear active offer fields after acceptance.
+        'laundryOffer.offeredLaundryId': null,
+        'laundryOffer.offeredAt': null,
+        'laundryOffer.offerExpiresAt': null,
+
+        // Optional backward compatibility fields.
+        'laundryId': currentUser.id,
+        'laundryName': laundryName,
+        'laundryPhone': laundryPhone,
+        'laundryPhotoUrl': laundryPhotoUrl,
+      });
+
+      transaction.set(bookingRef.collection('status_history').doc(), {
+        'status': 'looking_for_pickup_rider',
+        'title': 'Laundry Accepted',
+        'description':
+            'The laundry accepted this booking and the system is now looking for a pickup rider.',
+        'laundryId': currentUser.id,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
   Future<void> rejectOrder({
-    required String bookingId,
+    required BookingModel booking,
     required String laundryId,
     required String reason,
     required String note,
   }) async {
-    final bookingRef = _firestore.collection('bookings').doc(bookingId);
+    final bookingRef = _firestore.collection('bookings').doc(booking.id);
+    final laundryHistoryRef = _firestore
+        .collection('laundry_order_history')
+        .doc();
 
-    await bookingRef.update({
-      'status': 'awaiting_laundry_assignment',
-      'updatedAt': FieldValue.serverTimestamp(),
-      'rejectedLaundryIds': FieldValue.arrayUnion([laundryId]),
-      'laundryId': null,
-      'laundryName': null,
-      'laundryPhone': null,
-      'laundryPhotoUrl': null,
-      'laundryOffer.offeredLaundryId': null,
-      'laundryOffer.offeredAt': null,
-      'laundryOffer.offerExpiresAt': null,
-    });
+    final String cleanedReason = reason.trim();
+    final String cleanedNote = note.trim();
 
-    await bookingRef.collection('status_history').add({
-      'status': 'awaiting_laundry_assignment',
-      'title': 'Laundry Rejected',
-      'description': note.trim().isEmpty
-          ? 'Laundry rejected this booking because: $reason.'
-          : 'Laundry rejected this booking because: $reason. Note: $note',
-      'createdAt': FieldValue.serverTimestamp(),
+    await _firestore.runTransaction((transaction) async {
+      final bookingSnap = await transaction.get(bookingRef);
+
+      if (!bookingSnap.exists) {
+        throw Exception('Booking was not found.');
+      }
+
+      final data = bookingSnap.data();
+
+      if (data == null) {
+        throw Exception('Booking data is missing.');
+      }
+
+      final String status = _readString(data['status']) ?? '';
+
+      final Map<String, dynamic> laundrySnapshot = _asMap(
+        data['laundrySnapshot'],
+      );
+
+      final Map<String, dynamic> laundryOffer = _asMap(data['laundryOffer']);
+
+      final String? snapshotLaundryId =
+          _readString(laundrySnapshot['id']) ??
+          _readString(laundrySnapshot['laundryId']);
+
+      final String? offeredLaundryId = _readString(
+        laundryOffer['offeredLaundryId'],
+      );
+
+      final bool isThisLaundry =
+          snapshotLaundryId == laundryId || offeredLaundryId == laundryId;
+
+      final bool canReject =
+          status == 'offered_to_laundry' ||
+          status == 'awaiting_laundry_acceptance' ||
+          status == 'pending';
+
+      if (!canReject || !isThisLaundry) {
+        throw Exception('This order is no longer available for this laundry.');
+      }
+
+      transaction.update(bookingRef, {
+        'status': 'awaiting_laundry_assignment',
+        'updatedAt': FieldValue.serverTimestamp(),
+
+        // Prevent this laundry from receiving the same booking again.
+        'rejectedLaundryIds': FieldValue.arrayUnion([laundryId]),
+
+        // Important: your Cloud Function checks laundrySnapshot.id.
+        'laundrySnapshot': null,
+
+        // Clear active laundry offer fields.
+        'laundryOffer.offeredLaundryId': null,
+        'laundryOffer.offeredAt': null,
+        'laundryOffer.offerExpiresAt': null,
+
+        // Optional old-field cleanup.
+        'laundryId': null,
+        'laundryName': null,
+        'laundryPhone': null,
+        'laundryPhotoUrl': null,
+
+        // Latest rejection info on the booking.
+        'laundryRejection': {
+          'laundryId': laundryId,
+          'reason': cleanedReason,
+          'note': cleanedNote,
+          'rejectedAt': FieldValue.serverTimestamp(),
+          'cancelledBy': 'laundry',
+        },
+      });
+
+      transaction.set(laundryHistoryRef, {
+        'bookingId': booking.id,
+        'bookingCode': booking.bookingCode,
+
+        'laundryId': laundryId,
+        'laundryName': booking.laundrySnapshotName,
+        'laundryPhone': booking.laundrySnapshotPhone,
+
+        'customerId': booking.customerId,
+        'customerName': booking.customerName,
+        'customerPhone': booking.customerPhone,
+
+        'serviceType': booking.serviceType,
+        'selectedAddOns': booking.selectedAddOns,
+
+        'estimatedWeightKg': booking.estimatedWeightKg,
+        'actualWeightKg': booking.actualWeightKg,
+
+        'pickupAddress': booking.pickupAddress,
+        'dropoffAddress': booking.customerAddress,
+
+        'totalPrice': booking.totalPrice,
+        'currency': booking.currency,
+
+        'status': 'rejected',
+        'rejectedAt': FieldValue.serverTimestamp(),
+        'completedAt': null,
+
+        'rejection': {
+          'reason': cleanedReason,
+          'note': cleanedNote,
+          'rejectedBy': 'laundry',
+        },
+
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      transaction.set(bookingRef.collection('status_history').doc(), {
+        'status': 'awaiting_laundry_assignment',
+        'title': 'Laundry Rejected',
+        'description': cleanedNote.isEmpty
+            ? 'Laundry rejected this booking because: $cleanedReason.'
+            : 'Laundry rejected this booking because: $cleanedReason. Note: $cleanedNote',
+        'laundryId': laundryId,
+        'reason': cleanedReason,
+        'note': cleanedNote,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
+
     if (value is Map) {
       return value.map((key, val) => MapEntry(key.toString(), val));
     }
+
     return <String, dynamic>{};
   }
 
   String? _readString(dynamic value) {
     if (value == null) return null;
+
     final result = value.toString().trim();
     return result.isEmpty ? null : result;
   }
+
+  GeoPoint? _readGeoPoint(dynamic value) {
+    if (value is GeoPoint) return value;
+    return null;
+  }
+
+  num _readNum(dynamic value, {num fallback = 0}) {
+    if (value is num) return value;
+
+    if (value is String) {
+      return num.tryParse(value) ?? fallback;
+    }
+
+    return fallback;
+  }
+
+  int _readInt(dynamic value, {int fallback = 0}) {
+    if (value is int) return value;
+
+    if (value is double) return value.round();
+
+    if (value is num) return value.toInt();
+
+    if (value is String) {
+      return int.tryParse(value) ?? fallback;
+    }
+
+    return fallback;
+  }
 }
+
+// class OperatorOrdersService {
+//   OperatorOrdersService({FirebaseFirestore? firestore})
+//     : _firestore = firestore ?? FirebaseFirestore.instance;
+
+//   final FirebaseFirestore _firestore;
+
+//   static const List<String> _newStatuses = [
+//     'offered_to_laundry',
+//     'awaiting_laundry_acceptance',
+//     'pending',
+//   ];
+
+//   static const List<String> _activeStatuses = [
+//     'looking_for_pickup_rider',
+//     'pickup_rider_assigned',
+//     'pickup_started',
+//     'arrived_at_pickup',
+//     'arrived_at_laundry',
+//     'processing',
+//     'ready_for_dropoff',
+//     'arrived_at_laundry_for_delivery',
+//     'delivery_in_progress',
+//   ];
+
+//   Stream<List<BookingModel>> streamNewOrders(String laundryId) {
+//     return _firestore
+//         .collection('bookings')
+//         .where('laundrySnapshot.id', isEqualTo: laundryId)
+//         .where('status', whereIn: _newStatuses)
+//         .snapshots()
+//         .map((snapshot) {
+//           final bookings = snapshot.docs
+//               .map((doc) => BookingModel.fromMap(doc.data(), doc.id))
+//               .toList();
+
+//           bookings.sort((a, b) {
+//             final aTime =
+//                 a.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+//             final bTime =
+//                 b.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+//             return bTime.compareTo(aTime);
+//           });
+
+//           return bookings;
+//         });
+//   }
+
+//   Stream<List<BookingModel>> streamActiveOrders(String laundryId) {
+//     return _firestore
+//         .collection('bookings')
+//         .where('laundrySnapshot.id', isEqualTo: laundryId)
+//         .where('status', whereIn: _activeStatuses)
+//         .snapshots()
+//         .map((snapshot) {
+//           final bookings = snapshot.docs
+//               .map((doc) => BookingModel.fromMap(doc.data(), doc.id))
+//               .toList();
+
+//           bookings.sort((a, b) {
+//             final aTime =
+//                 a.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+//             final bTime =
+//                 b.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+//             return bTime.compareTo(aTime);
+//           });
+
+//           return bookings;
+//         });
+//   }
+
+//   Stream<Map<String, int>> streamOrderCounts(String laundryId) {
+//     return _firestore
+//         .collection('bookings')
+//         .where('laundrySnapshot.id', isEqualTo: laundryId)
+//         .snapshots()
+//         .map((snapshot) {
+//           int newCount = 0;
+//           int activeCount = 0;
+
+//           for (final doc in snapshot.docs) {
+//             final status = (doc.data()['status'] ?? '').toString();
+
+//             if (_newStatuses.contains(status)) {
+//               newCount++;
+//             } else if (_activeStatuses.contains(status)) {
+//               activeCount++;
+//             }
+//           }
+
+//           return {'new': newCount, 'active': activeCount};
+//         });
+//   }
+
+//   Future<void> acceptOrder({
+//     required String bookingId,
+//     required AppUserModel? currentUser,
+//   }) async {
+//     if (currentUser == null) {
+//       throw Exception('Current user is null.');
+//     }
+
+//     final laundryDoc = await _firestore
+//         .collection('laundries')
+//         .doc(currentUser.id)
+//         .get();
+
+//     final laundryData = laundryDoc.data() ?? <String, dynamic>{};
+//     final profile = _asMap(laundryData['profile']);
+//     final contact = _asMap(laundryData['contact']);
+//     final location = _asMap(laundryData['location']);
+
+//     final laundryName = _readString(profile['name']) ?? currentUser.fullName;
+//     final laundryPhone =
+//         _readString(contact['phoneNumber']) ?? currentUser.phoneNumber;
+//     final laundryPhotoUrl = _readString(profile['photoUrl']) ?? '';
+//     final laundryAddressLine = _readString(location['addressLine']) ?? '';
+//     final latitude = _readString(location['latitude']);
+//     final longitude = _readString(location['longitude']);
+
+//     final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+//     await bookingRef.update({
+//       'status': 'looking_for_pickup_rider',
+//       'updatedAt': FieldValue.serverTimestamp(),
+//       'timeline.acceptedAt': FieldValue.serverTimestamp(),
+//       'laundryAssignment.assignedAutomatically': true,
+//       'laundryAssignment.assignedAt': FieldValue.serverTimestamp(),
+//       'laundrySnapshot.id': currentUser.id,
+//       'laundrySnapshot.laundryName': laundryName,
+//       'laundrySnapshot.laundryPhone': laundryPhone,
+//       'laundrySnapshot.laundryPhotoUrl': laundryPhotoUrl,
+//       'laundrySnapshot.addressLine': laundryAddressLine,
+//       'laundrySnapshot.latitude': latitude,
+//       'laundrySnapshot.longitude': longitude,
+//     });
+
+//     await bookingRef.collection('status_history').add({
+//       'status': 'looking_for_pickup_rider',
+//       'title': 'Laundry Accepted',
+//       'description':
+//           'The laundry accepted this booking and the system is now looking for a pickup rider.',
+//       'createdAt': FieldValue.serverTimestamp(),
+//     });
+//   }
+
+//   Future<void> rejectOrder({
+//     required String bookingId,
+//     required String laundryId,
+//     required String reason,
+//     required String note,
+//   }) async {
+//     final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+//     await bookingRef.update({
+//       'status': 'awaiting_laundry_assignment',
+//       'updatedAt': FieldValue.serverTimestamp(),
+//       'rejectedLaundryIds': FieldValue.arrayUnion([laundryId]),
+//       'laundryId': null,
+//       'laundryName': null,
+//       'laundryPhone': null,
+//       'laundryPhotoUrl': null,
+//       'laundryOffer.offeredLaundryId': null,
+//       'laundryOffer.offeredAt': null,
+//       'laundryOffer.offerExpiresAt': null,
+//     });
+
+//     await bookingRef.collection('status_history').add({
+//       'status': 'awaiting_laundry_assignment',
+//       'title': 'Laundry Rejected',
+//       'description': note.trim().isEmpty
+//           ? 'Laundry rejected this booking because: $reason.'
+//           : 'Laundry rejected this booking because: $reason. Note: $note',
+//       'createdAt': FieldValue.serverTimestamp(),
+//     });
+//   }
+
+//   Map<String, dynamic> _asMap(dynamic value) {
+//     if (value is Map<String, dynamic>) return value;
+//     if (value is Map) {
+//       return value.map((key, val) => MapEntry(key.toString(), val));
+//     }
+//     return <String, dynamic>{};
+//   }
+
+//   String? _readString(dynamic value) {
+//     if (value == null) return null;
+//     final result = value.toString().trim();
+//     return result.isEmpty ? null : result;
+//   }
+// }

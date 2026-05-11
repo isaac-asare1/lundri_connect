@@ -3,9 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
-import '../../models/booking_model.dart';
 import '../../widgets/loading_widget.dart';
-import '../laundry/laundry_history_details_screen.dart';
 
 class RidersOdersHistoryScreen extends StatelessWidget {
   const RidersOdersHistoryScreen({super.key});
@@ -60,6 +58,10 @@ class OrdersHistoryScreen extends StatelessWidget {
     return _LaundryHistoryView(laundryId: currentUser.uid);
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/*                               RIDER HISTORY                                */
+/* -------------------------------------------------------------------------- */
 
 class _RiderHistoryView extends StatelessWidget {
   final String riderId;
@@ -141,7 +143,6 @@ class _RiderHistoryView extends StatelessWidget {
     return FirebaseFirestore.instance
         .collection('completed_rides')
         .where('riderId', isEqualTo: riderId)
-        .orderBy('completedAt', descending: true)
         .limit(50)
         .snapshots()
         .map((snapshot) {
@@ -150,8 +151,8 @@ class _RiderHistoryView extends StatelessWidget {
               .toList();
 
           rides.sort((a, b) {
-            final aTime = a.completedAt ?? DateTime(2000);
-            final bTime = b.completedAt ?? DateTime(2000);
+            final aTime = a.displayTime ?? DateTime(2000);
+            final bTime = b.displayTime ?? DateTime(2000);
             return bTime.compareTo(aTime);
           });
 
@@ -159,6 +160,10 @@ class _RiderHistoryView extends StatelessWidget {
         });
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/*                              LAUNDRY HISTORY                               */
+/* -------------------------------------------------------------------------- */
 
 class _LaundryHistoryView extends StatelessWidget {
   final String laundryId;
@@ -175,8 +180,8 @@ class _LaundryHistoryView extends StatelessWidget {
         elevation: 0,
         foregroundColor: AppColors.textPrimary,
       ),
-      body: StreamBuilder<List<BookingModel>>(
-        stream: _streamLaundryHistory(laundryId),
+      body: StreamBuilder<List<LaundryOrderHistoryModel>>(
+        stream: _streamLaundryOrderHistory(laundryId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const LoadingWidget(message: 'Loading history...');
@@ -199,32 +204,31 @@ class _LaundryHistoryView extends StatelessWidget {
             );
           }
 
-          final bookings = snapshot.data ?? <BookingModel>[];
+          final histories = snapshot.data ?? <LaundryOrderHistoryModel>[];
 
-          if (bookings.isEmpty) {
-            return const _EmptyHistoryView();
+          if (histories.isEmpty) {
+            return const _EmptyHistoryView(
+              title: 'No laundry history yet',
+              subtitle:
+                  'Completed, cancelled, and rejected laundry orders will appear here.',
+            );
           }
 
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            itemCount: bookings.length,
+            itemCount: histories.length,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
-              final booking = bookings[index];
+              final history = histories[index];
 
-              return _LaundryHistoryBookingCard(
-                booking: booking,
-                userId: laundryId,
-                role: 'laundry',
+              return _LaundryOrderHistoryCard(
+                history: history,
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => BookingHistoryDetailsScreen(
-                        booking: booking,
-                        role: 'laundry',
-                        userId: laundryId,
-                      ),
+                      builder: (_) =>
+                          LaundryOrderHistoryDetailsScreen(history: history),
                     ),
                   );
                 },
@@ -236,78 +240,145 @@ class _LaundryHistoryView extends StatelessWidget {
     );
   }
 
-  static Stream<List<BookingModel>> _streamLaundryHistory(String laundryId) {
+  static Stream<List<LaundryOrderHistoryModel>> _streamLaundryOrderHistory(
+    String laundryId,
+  ) {
     return FirebaseFirestore.instance
-        .collection('bookings')
-        .where('status', whereIn: ['completed', 'cancelled'])
-        .where('laundrySnapshot.id', isEqualTo: laundryId)
-        .orderBy('updatedAt', descending: true)
+        .collection('laundry_order_history')
+        .where('laundryId', isEqualTo: laundryId)
         .limit(50)
         .snapshots()
         .map((snapshot) {
-          final bookings = snapshot.docs
-              .map((doc) => BookingModel.fromMap(doc.data(), doc.id))
+          final histories = snapshot.docs
+              .map(
+                (doc) => LaundryOrderHistoryModel.fromMap(doc.data(), doc.id),
+              )
               .toList();
 
-          bookings.sort((a, b) {
-            final aTime =
-                a.updatedAt ?? a.requestedAt ?? a.createdAt ?? DateTime(2000);
-            final bTime =
-                b.updatedAt ?? b.requestedAt ?? b.createdAt ?? DateTime(2000);
+          histories.sort((a, b) {
+            final aTime = a.displayTime ?? DateTime(2000);
+            final bTime = b.displayTime ?? DateTime(2000);
             return bTime.compareTo(aTime);
           });
 
-          return bookings;
+          return histories;
         });
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                  MODELS                                    */
+/* -------------------------------------------------------------------------- */
+
 class CompletedRideModel {
   final String id;
   final String bookingId;
+  final String bookingCode;
+
   final String riderId;
   final String role;
+  final String taskType;
   final String status;
+
   final String pickup;
   final String dropoff;
+
   final String customerId;
   final String customerName;
+  final String customerPhone;
+
+  final String laundryId;
+  final String laundryName;
+  final String laundryPhone;
+
+  final String cancellationReason;
+  final String cancellationNote;
+
   final DateTime? completedAt;
+  final DateTime? cancelledAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   const CompletedRideModel({
     required this.id,
     required this.bookingId,
+    required this.bookingCode,
     required this.riderId,
     required this.role,
+    required this.taskType,
     required this.status,
     required this.pickup,
     required this.dropoff,
     required this.customerId,
     required this.customerName,
+    required this.customerPhone,
+    required this.laundryId,
+    required this.laundryName,
+    required this.laundryPhone,
+    required this.cancellationReason,
+    required this.cancellationNote,
     required this.completedAt,
+    required this.cancelledAt,
+    required this.createdAt,
+    required this.updatedAt,
   });
 
   factory CompletedRideModel.fromMap(Map<String, dynamic> map, String docId) {
+    final cancellation = _asMap(map['cancellation']);
+
     return CompletedRideModel(
       id: docId,
       bookingId: _readString(map['bookingId']),
+      bookingCode: _readString(map['bookingCode']),
+
       riderId: _readString(map['riderId']),
       role: _readString(map['role']),
+      taskType: _readString(map['taskType']),
       status: _readString(map['status']),
+
       pickup: _readString(map['pickup'], fallback: 'Pickup not available'),
       dropoff: _readString(map['dropoff'], fallback: 'Drop-off not available'),
+
       customerId: _readString(map['customerId']),
       customerName: _readString(map['customerName'], fallback: 'Customer'),
+      customerPhone: _readString(map['customerPhone']),
+
+      laundryId: _readString(map['laundryId']),
+      laundryName: _readString(map['laundryName'], fallback: 'Laundry'),
+      laundryPhone: _readString(map['laundryPhone']),
+
+      cancellationReason: _readString(cancellation['reason']),
+      cancellationNote: _readString(cancellation['note']),
+
       completedAt: _parseTimestamp(map['completedAt']),
+      cancelledAt: _parseTimestamp(map['cancelledAt']),
+      createdAt: _parseTimestamp(map['createdAt']),
+      updatedAt: _parseTimestamp(map['updatedAt']),
     );
   }
 
   bool get isPickupRide => role == 'pickup_rider';
 
+  bool get isCancelled => status == 'cancelled';
+
   String get readableRole {
     if (role == 'pickup_rider') return 'Pickup rider';
     if (role == 'delivery_rider') return 'Delivery rider';
     return role.replaceAll('_', ' ');
+  }
+
+  DateTime? get displayTime {
+    return updatedAt ?? completedAt ?? cancelledAt ?? createdAt;
+  }
+
+  static Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+
+    return <String, dynamic>{};
   }
 
   static String _readString(dynamic value, {String fallback = ''}) {
@@ -324,6 +395,197 @@ class CompletedRideModel {
     return null;
   }
 }
+
+class LaundryOrderHistoryModel {
+  final String id;
+  final String bookingId;
+  final String bookingCode;
+
+  final String laundryId;
+  final String laundryName;
+  final String laundryPhone;
+
+  final String customerId;
+  final String customerName;
+  final String customerPhone;
+
+  final String serviceType;
+  final List<String> selectedAddOns;
+
+  final int estimatedWeightKg;
+  final int? actualWeightKg;
+
+  final String pickupAddress;
+  final String dropoffAddress;
+
+  final int totalPrice;
+  final String currency;
+
+  final String status;
+
+  final String rejectionReason;
+  final String rejectionNote;
+
+  final DateTime? rejectedAt;
+  final DateTime? completedAt;
+  final DateTime? cancelledAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  const LaundryOrderHistoryModel({
+    required this.id,
+    required this.bookingId,
+    required this.bookingCode,
+    required this.laundryId,
+    required this.laundryName,
+    required this.laundryPhone,
+    required this.customerId,
+    required this.customerName,
+    required this.customerPhone,
+    required this.serviceType,
+    required this.selectedAddOns,
+    required this.estimatedWeightKg,
+    required this.actualWeightKg,
+    required this.pickupAddress,
+    required this.dropoffAddress,
+    required this.totalPrice,
+    required this.currency,
+    required this.status,
+    required this.rejectionReason,
+    required this.rejectionNote,
+    required this.rejectedAt,
+    required this.completedAt,
+    required this.cancelledAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory LaundryOrderHistoryModel.fromMap(
+    Map<String, dynamic> map,
+    String docId,
+  ) {
+    final rejection = _asMap(map['rejection']);
+
+    return LaundryOrderHistoryModel(
+      id: docId,
+      bookingId: _readString(map['bookingId']),
+      bookingCode: _readString(map['bookingCode']),
+
+      laundryId: _readString(map['laundryId']),
+      laundryName: _readString(map['laundryName'], fallback: 'Laundry'),
+      laundryPhone: _readString(map['laundryPhone']),
+
+      customerId: _readString(map['customerId']),
+      customerName: _readString(map['customerName'], fallback: 'Customer'),
+      customerPhone: _readString(map['customerPhone']),
+
+      serviceType: _readString(map['serviceType']),
+      selectedAddOns: _readStringList(map['selectedAddOns']),
+
+      estimatedWeightKg: _readInt(map['estimatedWeightKg']),
+      actualWeightKg: _readNullableInt(map['actualWeightKg']),
+
+      pickupAddress: _readString(
+        map['pickupAddress'],
+        fallback: 'Pickup address not available',
+      ),
+      dropoffAddress: _readString(
+        map['dropoffAddress'],
+        fallback: 'Drop-off address not available',
+      ),
+
+      totalPrice: _readInt(map['totalPrice']),
+      currency: _readString(map['currency'], fallback: 'GHS'),
+
+      status: _readString(map['status'], fallback: 'completed'),
+
+      rejectionReason: _readString(rejection['reason']),
+      rejectionNote: _readString(rejection['note']),
+
+      rejectedAt: _parseTimestamp(map['rejectedAt']),
+      completedAt: _parseTimestamp(map['completedAt']),
+      cancelledAt: _parseTimestamp(map['cancelledAt']),
+      createdAt: _parseTimestamp(map['createdAt']),
+      updatedAt: _parseTimestamp(map['updatedAt']),
+    );
+  }
+
+  bool get isRejected => status == 'rejected';
+  bool get isCancelled => status == 'cancelled';
+  bool get isCompleted => status == 'completed' || status == 'complete';
+
+  String get readableStatus {
+    if (isRejected) return 'Rejected';
+    if (isCancelled) return 'Cancelled';
+    if (isCompleted) return 'Completed';
+    return status.replaceAll('_', ' ');
+  }
+
+  String get readableServiceType {
+    if (serviceType == 'wash_fold') return 'Wash & Fold';
+    if (serviceType == 'wash_iron') return 'Wash & Iron';
+
+    final clean = serviceType.replaceAll('_', ' ').trim();
+    return clean.isEmpty ? 'Service' : clean;
+  }
+
+  DateTime? get displayTime {
+    return updatedAt ?? rejectedAt ?? completedAt ?? cancelledAt ?? createdAt;
+  }
+
+  static Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+
+    return <String, dynamic>{};
+  }
+
+  static String _readString(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+
+    final result = value.toString().trim();
+    return result.isEmpty ? fallback : result;
+  }
+
+  static int _readInt(dynamic value, {int fallback = 0}) {
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  static int? _readNullableInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static List<String> _readStringList(dynamic value) {
+    if (value is List) {
+      return value.map((item) => item.toString()).toList();
+    }
+
+    return <String>[];
+  }
+
+  static DateTime? _parseTimestamp(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              RIDER CARD UI                                 */
+/* -------------------------------------------------------------------------- */
 
 class _CompletedRideHistoryCard extends StatelessWidget {
   final CompletedRideModel ride;
@@ -364,22 +626,22 @@ class _CompletedRideHistoryCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              ride.status != "cancelled"
+              ride.isCancelled
                   ? const CircleAvatar(
+                      radius: 21,
+                      backgroundColor: Color(0xFFFFEAEA),
+                      child: Icon(
+                        Icons.cancel_rounded,
+                        color: Color(0xFFE53935),
+                        size: 24,
+                      ),
+                    )
+                  : const CircleAvatar(
                       radius: 21,
                       backgroundColor: Color(0xFFE9F9EF),
                       child: Icon(
                         Icons.check_circle_rounded,
                         color: Color(0xFF3FC37A),
-                        size: 24,
-                      ),
-                    )
-                  : CircleAvatar(
-                      radius: 21,
-                      backgroundColor: const Color(0xFFFFEAEA), // light red
-                      child: const Icon(
-                        Icons.cancel_rounded, // or Icons.close
-                        color: Color(0xFFE53935), // red
                         size: 24,
                       ),
                     ),
@@ -410,7 +672,7 @@ class _CompletedRideHistoryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    _formatTime(ride.completedAt),
+                    _formatTime(ride.displayTime),
                     style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
@@ -436,23 +698,41 @@ class _CompletedRideHistoryCard extends StatelessWidget {
   }
 }
 
-class _LaundryHistoryBookingCard extends StatelessWidget {
-  final BookingModel booking;
-  final String userId;
-  final String role;
+/* -------------------------------------------------------------------------- */
+/*                             LAUNDRY CARD UI                                */
+/* -------------------------------------------------------------------------- */
+
+class _LaundryOrderHistoryCard extends StatelessWidget {
+  final LaundryOrderHistoryModel history;
   final VoidCallback onTap;
 
-  const _LaundryHistoryBookingCard({
-    required this.booking,
-    required this.userId,
-    required this.role,
-    required this.onTap,
-  });
+  const _LaundryOrderHistoryCard({required this.history, required this.onTap});
+
+  Color get _iconBg {
+    if (history.isRejected || history.isCancelled) {
+      return const Color(0xFFFFEAEA);
+    }
+
+    return const Color(0xFFE9F9EF);
+  }
+
+  Color get _iconColor {
+    if (history.isRejected || history.isCancelled) {
+      return const Color(0xFFE53935);
+    }
+
+    return const Color(0xFF3FC37A);
+  }
+
+  IconData get _icon {
+    if (history.isRejected) return Icons.block_rounded;
+    if (history.isCancelled) return Icons.cancel_rounded;
+    return Icons.check_circle_rounded;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final DateTime? time =
-        booking.updatedAt ?? booking.requestedAt ?? booking.createdAt;
+    final DateTime? time = history.displayTime;
 
     return Material(
       color: Colors.transparent,
@@ -475,32 +755,18 @@ class _LaundryHistoryBookingCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              booking.status == "cancelled"
-                  ? CircleAvatar(
-                      radius: 21,
-                      backgroundColor: const Color(0xFFFFEAEA), // light red
-                      child: const Icon(
-                        Icons.cancel_rounded, // or Icons.close
-                        color: Color(0xFFE53935), // red
-                        size: 24,
-                      ),
-                    )
-                  : const CircleAvatar(
-                      radius: 21,
-                      backgroundColor: Color(0xFFE9F9EF),
-                      child: Icon(
-                        Icons.check_circle_rounded,
-                        color: Color(0xFF3FC37A),
-                        size: 24,
-                      ),
-                    ),
+              CircleAvatar(
+                radius: 21,
+                backgroundColor: _iconBg,
+                child: Icon(_icon, color: _iconColor, size: 24),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      booking.customerName,
+                      history.customerName,
                       softWrap: true,
                       style: const TextStyle(
                         fontSize: 14.5,
@@ -509,12 +775,23 @@ class _LaundryHistoryBookingCard extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 6),
                     Text(
-                      booking.serviceType == "wash_fold"
-                          ? "Wash & Fold"
-                          : 'Wash & Iron',
-                      style: TextStyle(fontSize: 14),
+                      history.readableServiceType,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      history.readableStatus,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: _iconColor,
+                      ),
                     ),
                   ],
                 ),
@@ -524,7 +801,7 @@ class _LaundryHistoryBookingCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'GHS ${booking.totalPrice}',
+                    '${history.currency} ${history.totalPrice}',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
@@ -559,6 +836,10 @@ class _LaundryHistoryBookingCard extends StatelessWidget {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*                              RIDER DETAILS                                 */
+/* -------------------------------------------------------------------------- */
+
 class CompletedRideHistoryDetailsScreen extends StatelessWidget {
   final CompletedRideModel ride;
   final String amountText;
@@ -571,6 +852,8 @@ class CompletedRideHistoryDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final statusText = ride.isCancelled ? 'Cancelled ride' : 'Completed ride';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F4F6),
       appBar: AppBar(
@@ -584,8 +867,9 @@ class CompletedRideHistoryDetailsScreen extends StatelessWidget {
         children: [
           _DetailsHeaderCard(
             title: ride.customerName,
-            subtitle: ride.readableRole,
+            subtitle: statusText,
             amount: amountText,
+            isNegative: ride.isCancelled,
           ),
           const SizedBox(height: 14),
           _DetailsSection(
@@ -612,20 +896,209 @@ class CompletedRideHistoryDetailsScreen extends StatelessWidget {
                 label: 'Customer',
                 value: ride.customerName,
               ),
-              // _DetailsRow(
-              //   icon: Icons.assignment_outlined,
-              //   label: 'Booking ID',
-              //   value: ride.bookingId,
-              // ),
+              _DetailsRow(
+                icon: Icons.phone_outlined,
+                label: 'Customer phone',
+                value: ride.customerPhone,
+              ),
               _DetailsRow(
                 icon: Icons.delivery_dining_rounded,
                 label: 'Role',
                 value: ride.readableRole,
               ),
               _DetailsRow(
+                icon: Icons.info_outline_rounded,
+                label: 'Status',
+                value: ride.status,
+              ),
+              _DetailsRow(
                 icon: Icons.access_time_rounded,
-                label: 'Completed',
-                value: _formatFullDateTime(ride.completedAt),
+                label: ride.isCancelled ? 'Cancelled' : 'Completed',
+                value: _formatFullDateTime(
+                  ride.isCancelled ? ride.cancelledAt : ride.completedAt,
+                ),
+              ),
+            ],
+          ),
+          if (ride.isCancelled) ...[
+            const SizedBox(height: 14),
+            _DetailsSection(
+              title: 'Cancellation',
+              children: [
+                _DetailsRow(
+                  icon: Icons.block_rounded,
+                  label: 'Reason',
+                  value: ride.cancellationReason,
+                ),
+                _DetailsRow(
+                  icon: Icons.notes_rounded,
+                  label: 'Note',
+                  value: ride.cancellationNote,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             LAUNDRY DETAILS                                */
+/* -------------------------------------------------------------------------- */
+
+class LaundryOrderHistoryDetailsScreen extends StatelessWidget {
+  final LaundryOrderHistoryModel history;
+
+  const LaundryOrderHistoryDetailsScreen({super.key, required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F4F6),
+      appBar: AppBar(
+        title: const Text('Order Details'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: AppColors.textPrimary,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        children: [
+          _DetailsHeaderCard(
+            title: history.customerName,
+            subtitle: history.readableStatus,
+            amount: '${history.currency} ${history.totalPrice}',
+            isNegative: history.isRejected || history.isCancelled,
+          ),
+          const SizedBox(height: 14),
+          _DetailsSection(
+            title: 'Customer',
+            children: [
+              _DetailsRow(
+                icon: Icons.person_outline_rounded,
+                label: 'Name',
+                value: history.customerName,
+              ),
+              _DetailsRow(
+                icon: Icons.phone_outlined,
+                label: 'Phone',
+                value: history.customerPhone,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _DetailsSection(
+            title: 'Order',
+            children: [
+              _DetailsRow(
+                icon: Icons.receipt_long_outlined,
+                label: 'Booking code',
+                value: history.bookingCode,
+              ),
+              _DetailsRow(
+                icon: Icons.local_laundry_service_outlined,
+                label: 'Service',
+                value: history.readableServiceType,
+              ),
+              _DetailsRow(
+                icon: Icons.scale_outlined,
+                label: 'Estimated weight',
+                value: '${history.estimatedWeightKg} kg',
+              ),
+              _DetailsRow(
+                icon: Icons.monitor_weight_outlined,
+                label: 'Actual weight',
+                value: history.actualWeightKg == null
+                    ? '—'
+                    : '${history.actualWeightKg} kg',
+              ),
+              _DetailsRow(
+                icon: Icons.payments_outlined,
+                label: 'Amount',
+                value: '${history.currency} ${history.totalPrice}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _DetailsSection(
+            title: 'Addresses',
+            children: [
+              _DetailsRow(
+                icon: Icons.location_on_outlined,
+                label: 'Pickup',
+                value: history.pickupAddress,
+              ),
+              _DetailsRow(
+                icon: Icons.outlined_flag_rounded,
+                label: 'Drop-off',
+                value: history.dropoffAddress,
+              ),
+            ],
+          ),
+          if (history.isRejected) ...[
+            const SizedBox(height: 14),
+            _DetailsSection(
+              title: 'Rejection',
+              children: [
+                _DetailsRow(
+                  icon: Icons.block_rounded,
+                  label: 'Reason',
+                  value: history.rejectionReason,
+                ),
+                _DetailsRow(
+                  icon: Icons.notes_rounded,
+                  label: 'Note',
+                  value: history.rejectionNote,
+                ),
+                _DetailsRow(
+                  icon: Icons.access_time_rounded,
+                  label: 'Rejected at',
+                  value: _formatFullDateTime(history.rejectedAt),
+                ),
+              ],
+            ),
+          ],
+          if (history.isCancelled) ...[
+            const SizedBox(height: 14),
+            _DetailsSection(
+              title: 'Cancellation',
+              children: [
+                _DetailsRow(
+                  icon: Icons.cancel_rounded,
+                  label: 'Cancelled at',
+                  value: _formatFullDateTime(history.cancelledAt),
+                ),
+              ],
+            ),
+          ],
+          if (history.isCompleted) ...[
+            const SizedBox(height: 14),
+            _DetailsSection(
+              title: 'Completion',
+              children: [
+                _DetailsRow(
+                  icon: Icons.check_circle_outline_rounded,
+                  label: 'Completed at',
+                  value: _formatFullDateTime(history.completedAt),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
+          _DetailsSection(
+            title: 'Timeline',
+            children: [
+              _DetailsRow(
+                icon: Icons.access_time_rounded,
+                label: 'Created',
+                value: _formatFullDateTime(history.createdAt),
+              ),
+              _DetailsRow(
+                icon: Icons.update_rounded,
+                label: 'Last updated',
+                value: _formatFullDateTime(history.updatedAt),
               ),
             ],
           ),
@@ -633,45 +1106,37 @@ class CompletedRideHistoryDetailsScreen extends StatelessWidget {
       ),
     );
   }
-
-  static String _formatFullDateTime(DateTime? value) {
-    if (value == null) return '—';
-
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
-    final hour = value.hour.toString().padLeft(2, '0');
-    final minute = value.minute.toString().padLeft(2, '0');
-
-    return '${value.day} ${months[value.month - 1]} ${value.year}, $hour:$minute';
-  }
 }
+
+/* -------------------------------------------------------------------------- */
+/*                              SHARED DETAILS                                */
+/* -------------------------------------------------------------------------- */
 
 class _DetailsHeaderCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String amount;
+  final bool isNegative;
 
   const _DetailsHeaderCard({
     required this.title,
     required this.subtitle,
     required this.amount,
+    this.isNegative = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final iconBg = isNegative
+        ? const Color(0xFFFFEAEA)
+        : const Color(0xFFE9F9EF);
+
+    final iconColor = isNegative
+        ? const Color(0xFFE53935)
+        : const Color(0xFF3FC37A);
+
+    final icon = isNegative ? Icons.cancel_rounded : Icons.receipt_long_rounded;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -680,14 +1145,10 @@ class _DetailsHeaderCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 26,
-            backgroundColor: Color(0xFFE9F9EF),
-            child: Icon(
-              Icons.receipt_long_rounded,
-              color: Color(0xFF3FC37A),
-              size: 28,
-            ),
+            backgroundColor: iconBg,
+            child: Icon(icon, color: iconColor, size: 28),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -704,7 +1165,7 @@ class _DetailsHeaderCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  subtitle.trim().isEmpty ? 'Completed ride' : subtitle.trim(),
+                  subtitle.trim().isEmpty ? 'Order history' : subtitle.trim(),
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -815,31 +1276,42 @@ class _DetailsRow extends StatelessWidget {
 }
 
 class _EmptyHistoryView extends StatelessWidget {
-  const _EmptyHistoryView();
+  final String title;
+  final String subtitle;
+
+  const _EmptyHistoryView({
+    this.title = 'No completed rides yet',
+    this.subtitle = 'Completed pickup and delivery rides will appear here.',
+  });
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history_rounded, size: 58, color: AppColors.iconMuted),
-            SizedBox(height: 14),
+            const Icon(
+              Icons.history_rounded,
+              size: 58,
+              color: AppColors.iconMuted,
+            ),
+            const SizedBox(height: 14),
             Text(
-              'No completed rides yet',
-              style: TextStyle(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'Completed pickup and delivery rides will appear here.',
+              subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
@@ -851,4 +1323,32 @@ class _EmptyHistoryView extends StatelessWidget {
       ),
     );
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                DATE HELPERS                                */
+/* -------------------------------------------------------------------------- */
+
+String _formatFullDateTime(DateTime? value) {
+  if (value == null) return '—';
+
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+
+  return '${value.day} ${months[value.month - 1]} ${value.year}, $hour:$minute';
 }

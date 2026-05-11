@@ -442,15 +442,16 @@ class RiderTaskDetailsScreen extends StatelessWidget {
     required bool isPickupTask,
     required bool isDeliveryTask,
   }) async {
-    final bookingRef = FirebaseFirestore.instance
-        .collection('bookings')
-        .doc(booking.id);
+    final firestore = FirebaseFirestore.instance;
+
+    final bookingRef = firestore.collection('bookings').doc(booking.id);
 
     final Map<String, dynamic> update = {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
     bool shouldCreateCompletedRide = false;
+    bool shouldCreateLaundryOrderHistory = false;
 
     if (isPickupTask) {
       if (stage == RiderTaskStage.goToPickup) {
@@ -480,12 +481,14 @@ class RiderTaskDetailsScreen extends StatelessWidget {
         update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
 
         shouldCreateCompletedRide = true;
+        shouldCreateLaundryOrderHistory = true;
       } else if (stage == RiderTaskStage.deliveryTaskDone) {
         update['status'] = 'completed';
         update['timeline.completedAt'] = FieldValue.serverTimestamp();
         update['deliveryRider.deliveredAt'] = FieldValue.serverTimestamp();
 
         shouldCreateCompletedRide = true;
+        shouldCreateLaundryOrderHistory = true;
       } else {
         return;
       }
@@ -493,20 +496,73 @@ class RiderTaskDetailsScreen extends StatelessWidget {
       return;
     }
 
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
+    await firestore.runTransaction((transaction) async {
+      final freshBookingSnap = await transaction.get(bookingRef);
+
+      if (!freshBookingSnap.exists) {
+        throw Exception('Booking was not found.');
+      }
+
+      final freshBookingData = freshBookingSnap.data();
+
+      if (freshBookingData == null) {
+        throw Exception('Booking data is missing.');
+      }
+
+      final String freshStatus =
+          freshBookingData['status']?.toString().trim() ?? '';
+
+      final Map<String, dynamic> laundrySnapshot =
+          freshBookingData['laundrySnapshot'] is Map<String, dynamic>
+          ? freshBookingData['laundrySnapshot'] as Map<String, dynamic>
+          : freshBookingData['laundrySnapshot'] is Map
+          ? (freshBookingData['laundrySnapshot'] as Map).map(
+              (key, value) => MapEntry(key.toString(), value),
+            )
+          : <String, dynamic>{};
+
+      final String laundryId =
+          laundrySnapshot['id']?.toString().trim().isNotEmpty == true
+          ? laundrySnapshot['id'].toString().trim()
+          : booking.laundrySnapshotId?.trim() ?? '';
+
+      final String laundryName =
+          laundrySnapshot['name']?.toString().trim().isNotEmpty == true
+          ? laundrySnapshot['name'].toString().trim()
+          : booking.laundrySnapshotName?.trim() ?? '';
+
+      final String laundryPhone =
+          laundrySnapshot['phoneNumber']?.toString().trim().isNotEmpty == true
+          ? laundrySnapshot['phoneNumber'].toString().trim()
+          : booking.laundrySnapshotPhone?.trim() ?? '';
+
+      if (shouldCreateLaundryOrderHistory && laundryId.isEmpty) {
+        throw Exception('Laundry information is missing for this booking.');
+      }
+
+      if (isPickupTask && booking.pickupRiderId == null) {
+        throw Exception('Pickup rider information is missing.');
+      }
+
+      if (isDeliveryTask && booking.deliveryRiderId == null) {
+        throw Exception('Delivery rider information is missing.');
+      }
+
       transaction.update(bookingRef, update);
 
       if (shouldCreateCompletedRide) {
-        final completedRideRef = FirebaseFirestore.instance
-            .collection('completed_rides')
-            .doc();
+        final completedRideRef = firestore.collection('completed_rides').doc();
 
         transaction.set(completedRideRef, {
           'bookingId': booking.id,
+          'bookingCode': booking.bookingCode,
+
           'riderId': isPickupTask
               ? booking.pickupRiderId
               : booking.deliveryRiderId,
           'role': isPickupTask ? 'pickup_rider' : 'delivery_rider',
+          'taskType': isPickupTask ? 'pickup' : 'delivery',
+
           'pickup': _ridePickup(
             booking: booking,
             isPickupTask: isPickupTask,
@@ -517,12 +573,88 @@ class RiderTaskDetailsScreen extends StatelessWidget {
             isPickupTask: isPickupTask,
             isDeliveryTask: isDeliveryTask,
           ),
+
           'customerId': booking.customerId,
           'customerName': booking.customerName,
+          'customerPhone': booking.customerPhone,
+
+          'laundryId': laundryId,
+          'laundryName': laundryName,
+          'laundryPhone': laundryPhone,
+
           'completedAt': FieldValue.serverTimestamp(),
+          'cancelledAt': null,
           'status': 'completed',
+
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       }
+
+      if (shouldCreateLaundryOrderHistory) {
+        final laundryHistoryRef = firestore
+            .collection('laundry_order_history')
+            .doc();
+
+        transaction.set(laundryHistoryRef, {
+          'bookingId': booking.id,
+          'bookingCode': booking.bookingCode,
+
+          'laundryId': laundryId,
+          'laundryName': laundryName,
+          'laundryPhone': laundryPhone,
+
+          'customerId': booking.customerId,
+          'customerName': booking.customerName,
+          'customerPhone': booking.customerPhone,
+
+          'serviceType': booking.serviceType,
+          'selectedAddOns': booking.selectedAddOns,
+
+          'estimatedWeightKg': booking.estimatedWeightKg,
+          'actualWeightKg': booking.actualWeightKg,
+
+          'pickupAddress': booking.pickupAddress,
+          'dropoffAddress': booking.customerAddress,
+
+          'totalPrice': booking.totalPrice,
+          'currency': booking.currency,
+
+          'status': 'completed',
+          'completedAt': FieldValue.serverTimestamp(),
+          'rejectedAt': null,
+          'cancelledAt': null,
+
+          'completion': {
+            'completedBy': 'delivery_rider',
+            'deliveryRiderId': booking.deliveryRiderId,
+            'previousBookingStatus': freshStatus,
+            'nextBookingStatus': 'completed',
+          },
+
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      transaction.set(bookingRef.collection('status_history').doc(), {
+        'status': update['status'],
+        'title': isPickupTask
+            ? 'Pickup Task Completed'
+            : shouldCreateLaundryOrderHistory
+            ? 'Booking Completed'
+            : 'Delivery Task Updated',
+        'description': isPickupTask
+            ? 'The pickup rider delivered the clothes to the laundry.'
+            : shouldCreateLaundryOrderHistory
+            ? 'The delivery rider delivered the clothes to the customer. The booking is now completed.'
+            : 'The delivery rider updated the delivery task.',
+        'riderId': isPickupTask
+            ? booking.pickupRiderId
+            : booking.deliveryRiderId,
+        'taskType': isPickupTask ? 'pickup' : 'delivery',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
