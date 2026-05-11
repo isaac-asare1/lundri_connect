@@ -560,60 +560,87 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     required String reason,
     required String note,
   }) async {
-    final bookingRef = FirebaseFirestore.instance
-        .collection('bookings')
-        .doc(booking.id);
+    final firestore = FirebaseFirestore.instance;
 
-    final bool isPickupRequest =
-        booking.pickupRiderId == riderId &&
-        booking.status == 'looking_for_pickup_rider';
-
-    final bool isDeliveryRequest =
-        booking.deliveryRiderId == riderId &&
-        booking.status == 'ready_for_dropoff';
-
-    if (!isPickupRequest && !isDeliveryRequest) return;
+    final bookingRef = firestore.collection('bookings').doc(booking.id);
+    final completedRideRef = firestore.collection('completed_rides').doc();
 
     await stopRequestRing();
 
-    final completedRideRef = FirebaseFirestore.instance
-        .collection('completed_rides')
-        .doc();
+    await firestore.runTransaction((transaction) async {
+      final bookingSnap = await transaction.get(bookingRef);
 
-    final String laundryAddress =
-        booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
-        ? booking.laundrySnapshotAddressLine!.trim()
-        : booking.laundrySnapshotName?.trim().isNotEmpty == true
-        ? booking.laundrySnapshotName!.trim()
-        : 'Laundry address not available';
+      if (!bookingSnap.exists) return;
 
-    final String customerAddress = booking.customerAddress.trim().isNotEmpty
-        ? booking.customerAddress.trim()
-        : 'Customer address not available';
+      final data = bookingSnap.data() as Map<String, dynamic>?;
 
-    final String pickupAddress = isPickupRequest
-        ? customerAddress
-        : laundryAddress;
+      if (data == null) return;
 
-    final String dropoffAddress = isPickupRequest
-        ? laundryAddress
-        : customerAddress;
+      final String currentStatus = data['status']?.toString() ?? '';
 
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
-      transaction.update(bookingRef, {
-        'status': isPickupRequest
-            ? 'looking_for_pickup_rider'
-            : 'ready_for_dropoff',
+      final Map<String, dynamic> pickupRider =
+          data['pickupRider'] is Map<String, dynamic>
+          ? data['pickupRider'] as Map<String, dynamic>
+          : <String, dynamic>{};
+
+      final Map<String, dynamic> deliveryRider =
+          data['deliveryRider'] is Map<String, dynamic>
+          ? data['deliveryRider'] as Map<String, dynamic>
+          : <String, dynamic>{};
+
+      final bool isPickupRequest =
+          pickupRider['riderId'] == riderId &&
+          currentStatus == 'looking_for_pickup_rider';
+
+      final bool isDeliveryRequest =
+          deliveryRider['riderId'] == riderId &&
+          currentStatus == 'ready_for_dropoff';
+
+      if (!isPickupRequest && !isDeliveryRequest) return;
+
+      final String taskType = isPickupRequest ? 'pickup' : 'delivery';
+
+      final String nextStatus = isPickupRequest
+          ? 'looking_for_pickup_rider'
+          : 'ready_for_dropoff';
+
+      final String laundryAddress =
+          booking.laundrySnapshotAddressLine?.trim().isNotEmpty == true
+          ? booking.laundrySnapshotAddressLine!.trim()
+          : booking.laundrySnapshotName?.trim().isNotEmpty == true
+          ? booking.laundrySnapshotName!.trim()
+          : 'Laundry address not available';
+
+      final String customerAddress = booking.customerAddress.trim().isNotEmpty
+          ? booking.customerAddress.trim()
+          : 'Customer address not available';
+
+      final String pickupAddress = isPickupRequest
+          ? customerAddress
+          : laundryAddress;
+
+      final String dropoffAddress = isPickupRequest
+          ? laundryAddress
+          : customerAddress;
+
+      final Map<String, dynamic> bookingUpdate = {
+        'status': nextStatus,
         'updatedAt': FieldValue.serverTimestamp(),
+
         'riderRejection': {
           'riderId': riderId,
           'reason': reason,
           'note': note,
-          'taskType': isPickupRequest ? 'pickup' : 'delivery',
+          'taskType': taskType,
           'rejectedAt': FieldValue.serverTimestamp(),
           'cancelledBy': 'rider',
         },
-        if (isPickupRequest)
+      };
+
+      if (isPickupRequest) {
+        bookingUpdate.addAll({
+          'rejectedPickupRiderIds': FieldValue.arrayUnion([riderId]),
+
           'pickupRider': {
             'riderId': null,
             'fullName': null,
@@ -624,7 +651,13 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             'assignedAt': null,
             'pickedUpAt': null,
           },
-        if (isDeliveryRequest)
+        });
+      }
+
+      if (isDeliveryRequest) {
+        bookingUpdate.addAll({
+          'rejectedDeliveryRiderIds': FieldValue.arrayUnion([riderId]),
+
           'deliveryRider': {
             'riderId': null,
             'fullName': null,
@@ -635,25 +668,58 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             'assignedAt': null,
             'deliveredAt': null,
           },
-      });
+        });
+      }
+
+      transaction.update(bookingRef, bookingUpdate);
 
       transaction.set(completedRideRef, {
         'bookingId': booking.id,
+        'bookingCode': booking.bookingCode,
+
         'riderId': riderId,
         'role': isPickupRequest ? 'pickup_rider' : 'delivery_rider',
+        'taskType': taskType,
+
         'pickup': pickupAddress,
         'dropoff': dropoffAddress,
+
         'customerId': booking.customerId,
         'customerName': booking.customerName,
-        'cancelledAt': FieldValue.serverTimestamp(),
-        'completedAt': FieldValue.serverTimestamp(),
+        'customerPhone': booking.customerPhone,
+
+        'laundryId': booking.laundrySnapshotId,
+        'laundryName': booking.laundrySnapshotName,
+        'laundryPhone': booking.laundrySnapshotPhone,
+
         'status': 'cancelled',
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'completedAt': null,
+
         'cancellation': {
           'reason': reason,
           'note': note,
           'cancelledBy': 'rider',
-          'taskType': isPickupRequest ? 'pickup' : 'delivery',
+          'taskType': taskType,
         },
+
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      transaction.set(bookingRef.collection('status_history').doc(), {
+        'status': nextStatus,
+        'title': isPickupRequest
+            ? 'Pickup Rider Rejected Request'
+            : 'Delivery Rider Rejected Request',
+        'description': isPickupRequest
+            ? 'The pickup rider rejected the request. Looking for another pickup rider.'
+            : 'The delivery rider rejected the request. Looking for another delivery rider.',
+        'riderId': riderId,
+        'reason': reason,
+        'note': note,
+        'taskType': taskType,
+        'createdAt': FieldValue.serverTimestamp(),
       });
     });
   }
