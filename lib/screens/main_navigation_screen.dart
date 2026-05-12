@@ -93,7 +93,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }) {
     if (isRider) {
       return [
-        // RiderHomeScreen(isProfileCompleted: isProfileCompleted),
         RiderHomeScreen(),
         const ActiveOrdersScreen(),
         const RiderProfileScreen(),

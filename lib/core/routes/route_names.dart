@@ -8,7 +8,6 @@ class RouteNames {
 
   static const String requests = '/requests';
   static const String activeOrders = '/active-orders';
-  static const String payments = '/payments';
   static const String riderProfile = '/rider-profile';
   static const String laundryProfile = '/laundry-profile';
 

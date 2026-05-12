@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/profile_menu_tile.dart';
 import '../others/payments_screen.dart';
+import 'rider_payment_screen.dart';
 
 class RiderProfileScreen extends StatelessWidget {
   const RiderProfileScreen({super.key});
@@ -101,7 +102,7 @@ class RiderProfileScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PaymentsScreen()),
+                MaterialPageRoute(builder: (_) => const RiderPaymentScreen()),
               );
             },
           ),

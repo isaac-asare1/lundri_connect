@@ -14,7 +14,6 @@ import '../../screens/rider/active_orders_screen.dart';
 import '../../screens/auth screens/login_screen.dart';
 import '../../screens/main_navigation_screen.dart';
 import '../../screens/laundry/operator_home_screen.dart';
-import '../../screens/others/payments_screen.dart';
 import '../../screens/laundry/requests_screen.dart';
 import '../../screens/rider/rider_home_screen.dart';
 import '../../screens/rider/rider_profile_screen.dart';
@@ -45,9 +44,6 @@ class AppRoutes {
 
       case RouteNames.activeOrders:
         return _materialRoute(const ActiveOrdersScreen());
-
-      case RouteNames.payments:
-        return _materialRoute(const PaymentsScreen());
 
       case RouteNames.laundryProfile:
         return _materialRoute(const LaundryProfileScreen());

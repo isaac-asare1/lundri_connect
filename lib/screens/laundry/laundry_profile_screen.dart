@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:lundri_connect/core/utils/helpers.dart';
+import 'package:lundri_connect/screens/laundry/laundry_payment_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -99,7 +100,7 @@ class LaundryProfileScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PaymentsScreen()),
+                MaterialPageRoute(builder: (_) => const LaundryPaymentScreen()),
               );
             },
           ),

@@ -8,6 +8,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/booking_model.dart';
 import '../../models/rider_model.dart';
@@ -28,6 +29,57 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   final AudioPlayer _requestRingPlayer = AudioPlayer();
   Timer? _requestRingTimer;
   bool _isRinging = false;
+
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _riderSessionSubscription;
+
+  Future<void> startRiderSessionWatcher({
+    required BuildContext context,
+    required String riderId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final localSessionId = prefs.getString('active_session_id');
+
+    if (localSessionId == null || localSessionId.isEmpty) return;
+
+    _riderSessionSubscription = FirebaseFirestore.instance
+        .collection('riders')
+        .doc(riderId)
+        .snapshots()
+        .listen((snapshot) async {
+          if (!snapshot.exists) return;
+
+          final data = snapshot.data();
+          final activeSessionId = data?['auth']?['activeSessionId']?.toString();
+
+          if (activeSessionId == null || activeSessionId.isEmpty) return;
+
+          if (activeSessionId != localSessionId) {
+            await _riderSessionSubscription?.cancel();
+
+            await FirebaseAuth.instance.signOut();
+
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.clear();
+
+            if (!context.mounted) return;
+
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/login',
+              (route) => false,
+            );
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'You have been logged out because your account was opened on another device.',
+                ),
+              ),
+            );
+          }
+        });
+  }
 
   @override
   void dispose() {
@@ -215,6 +267,17 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       longitude: position.longitude,
       addressLine: addressLine,
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user != null) {
+      startRiderSessionWatcher(context: context, riderId: user.uid);
+    }
   }
 
   @override
