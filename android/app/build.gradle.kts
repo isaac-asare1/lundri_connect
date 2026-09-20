@@ -28,7 +28,7 @@ android {
         applicationId = "com.example.lundri_connect"
 
         // ✅ FIXED: Firebase requires minimum SDK 23
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
 
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

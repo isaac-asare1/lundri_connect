@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
      <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
-        android:label="lundri_connect"
+        android:label="Lundri Connect"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
