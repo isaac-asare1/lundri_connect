@@ -49,12 +49,12 @@ flutter_launcher_icons:
   image_path: "assets/icons/lundri_connect_logo.png"
 
 flutter_native_splash:
-  color: "#FFFFFF"
-  image: assets/icons/lundri_connect_logo.png
+  color: "#FF6B4A"
+  # image: assets/icons/lundri_connect_logo.png
 
   android_12:
-    color: "#FFFFFF"
-    image: assets/icons/lundri_connect_logo.png
+    color: "#FF6B4A"
+    # image: assets/icons/lundri_connect_logo.png
 
 flutter:
   uses-material-design: true

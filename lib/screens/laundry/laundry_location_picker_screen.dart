@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/routes/route_names.dart';
+import '../../providers/auth_provider.dart' as app_auth;
 
 class LaundryLocationPickerScreen extends StatefulWidget {
   const LaundryLocationPickerScreen({super.key});
@@ -173,9 +175,31 @@ class _LaundryLocationPickerScreenState
 
       if (!mounted) return;
 
+      final authProvider = context.read<app_auth.AuthProvider>();
+
+      final setupCompleted = await authProvider.markAccountSetupComplete(
+        role: 'laundry',
+      );
+
+      if (!mounted) return;
+
+      if (!setupCompleted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authProvider.errorMessage.isNotEmpty
+                  ? authProvider.errorMessage
+                  : 'Location was saved, but setup could not be completed.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Laundry location saved successfully.'),
+          content: Text('Laundry setup completed successfully.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
