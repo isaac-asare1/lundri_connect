@@ -1493,7 +1493,7 @@ class _MessageInputBar extends StatelessWidget {
                   boxShadow: isOverlayMode
                       ? [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
+                            color: Colors.black.withValues(alpha: 0.12),
                             blurRadius: 18,
                             offset: const Offset(0, 6),
                           ),

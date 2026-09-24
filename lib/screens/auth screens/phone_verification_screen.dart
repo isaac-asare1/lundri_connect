@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -23,9 +22,6 @@ class PhoneVerificationScreen extends StatefulWidget {
 
 class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   final TextEditingController _otpController = TextEditingController();
-
-  String? _verificationId;
-  int? _resendToken;
 
   bool _isSendingCode = false;
   bool _isCompletingRegistration = false;
@@ -63,76 +59,33 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
     final authProvider = context.read<app_auth.AuthProvider>();
 
-    try {
-      await authProvider.sendPhoneVerificationCode(
-        phoneNumber: widget.arguments.phoneNumber,
-        forceResendingToken: isResend ? _resendToken : null,
+    final success = await authProvider.sendPhoneOtp(
+      phoneNumber: widget.arguments.phoneNumber,
+    );
 
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          if (!mounted) return;
+    if (!mounted) return;
 
-          setState(() {
-            _isSendingCode = false;
-          });
+    setState(() {
+      _isSendingCode = false;
+      _codeSent = success;
+    });
 
-          await _completeRegistration(credential);
-        },
-
-        verificationFailed: (FirebaseAuthException error) {
-          if (!mounted) return;
-
-          setState(() {
-            _isSendingCode = false;
-          });
-
-          _showMessage(_friendlyFirebaseMessage(error));
-        },
-
-        codeSent: (String verificationId, int? resendToken) {
-          if (!mounted) return;
-
-          setState(() {
-            _verificationId = verificationId;
-            _resendToken = resendToken;
-            _codeSent = true;
-            _isSendingCode = false;
-          });
-
-          _startResendTimer();
-
-          _showMessage(
-            isResend
-                ? 'A new verification code has been sent.'
-                : 'Verification code sent.',
-          );
-        },
-
-        codeAutoRetrievalTimeout: (String verificationId) {
-          if (!mounted) return;
-
-          setState(() {
-            _verificationId = verificationId;
-            _isSendingCode = false;
-          });
-        },
+    if (!success) {
+      _showMessage(
+        authProvider.errorMessage.isNotEmpty
+            ? authProvider.errorMessage
+            : 'Unable to send the verification code. Please try again.',
       );
-    } on FirebaseAuthException catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        _isSendingCode = false;
-      });
-
-      _showMessage(_friendlyFirebaseMessage(error));
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        _isSendingCode = false;
-      });
-
-      _showMessage('Unable to send the verification code. Please try again.');
+      return;
     }
+
+    _startResendTimer();
+
+    _showMessage(
+      isResend
+          ? 'A new verification code has been sent.'
+          : 'Verification code sent.',
+    );
   }
 
   void _startResendTimer() {
@@ -165,53 +118,57 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Future<void> _verifyEnteredCode() async {
-    if (_isBusy) return;
+    if (_isBusy || !_codeSent) return;
 
     final code = _otpController.text.trim();
 
-    if (code.length != 6) {
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
       _showMessage('Enter the 6-digit verification code.');
       return;
     }
 
-    final verificationId = _verificationId;
-
-    if (verificationId == null || verificationId.isEmpty) {
-      _showMessage(
-        'The verification session is not ready. Please resend the code.',
-      );
-      return;
-    }
-
     FocusScope.of(context).unfocus();
-
-    final credential = PhoneAuthProvider.credential(
-      verificationId: verificationId,
-      smsCode: code,
-    );
-
-    await _completeRegistration(credential);
-  }
-
-  Future<void> _completeRegistration(
-    PhoneAuthCredential phoneCredential,
-  ) async {
-    if (_isCompletingRegistration) return;
 
     setState(() {
       _isCompletingRegistration = true;
     });
 
     final authProvider = context.read<app_auth.AuthProvider>();
+
+    final verified = await authProvider.verifyPhoneOtp(
+      phoneNumber: widget.arguments.phoneNumber,
+      code: code,
+    );
+
+    if (!mounted) return;
+
+    if (!verified) {
+      setState(() {
+        _isCompletingRegistration = false;
+      });
+
+      _showMessage(
+        authProvider.errorMessage.isNotEmpty
+            ? authProvider.errorMessage
+            : 'The verification code could not be confirmed.',
+      );
+      return;
+    }
+
+    await _completeRegistration();
+  }
+
+  Future<void> _completeRegistration() async {
+    final authProvider = context.read<app_auth.AuthProvider>();
     final args = widget.arguments;
 
-    final success = await authProvider.completeSignupWithVerifiedPhone(
+    final success = await authProvider.completeSignupAfterPhoneVerification(
       fullName: args.fullName,
       email: args.email,
       laundryServiceName: args.laundryServiceName,
       password: args.password,
       role: args.role,
-      phoneCredential: phoneCredential,
+      phoneNumber: args.phoneNumber,
     );
 
     if (!mounted) return;
@@ -226,7 +183,6 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ? authProvider.errorMessage
             : 'Account creation could not be completed.',
       );
-
       return;
     }
 
@@ -240,7 +196,6 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
         ),
         (route) => false,
       );
-
       return;
     }
 
@@ -249,29 +204,6 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       RouteNames.riderBusinessInfo,
       (route) => false,
     );
-  }
-
-  String _friendlyFirebaseMessage(FirebaseAuthException error) {
-    switch (error.code) {
-      case 'invalid-phone-number':
-        return 'The phone number is invalid.';
-      case 'invalid-verification-code':
-        return 'The verification code is incorrect.';
-      case 'session-expired':
-        return 'The verification code has expired. Request a new code.';
-      case 'too-many-requests':
-        return 'Too many verification attempts. Please try again later.';
-      case 'quota-exceeded':
-        return 'The SMS verification limit has been reached. Please try again later.';
-      case 'credential-already-in-use':
-        return 'This phone number is already connected to another account.';
-      case 'network-request-failed':
-        return 'Network error. Check your internet connection and try again.';
-      case 'operation-not-allowed':
-        return 'Phone authentication is not enabled for this Firebase project.';
-      default:
-        return error.message ?? 'Phone verification failed. Please try again.';
-    }
   }
 
   void _showMessage(String message) {
@@ -403,6 +335,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                   enabled: !_isCompletingRegistration,
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.oneTimeCode],
                   maxLength: 6,
                   textAlign: TextAlign.center,
                   inputFormatters: [
@@ -506,6 +439,10 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                               ? () {
                                   _otpController.clear();
 
+                                  setState(() {
+                                    _codeSent = false;
+                                  });
+
                                   _sendVerificationCode(isResend: true);
                                 }
                               : null,
@@ -542,3 +479,5 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     );
   }
 }
+//
+//API key = bUFjakdqc2RRdWNlQ3plYkl3T04

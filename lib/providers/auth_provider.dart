@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,8 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
+    region: 'us-central1',
+  );
 
   bool _isLoading = false;
+  String? _verifiedPhoneNumber;
+  DateTime? _phoneVerifiedAt;
   String _errorMessage = '';
   String _selectedRole = 'laundry';
 
@@ -101,50 +107,133 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // PHONE VERIFICATION
+  // PHONE VERIFICATION - ARKESEL VIA FIREBASE CLOUD FUNCTIONS
   // ---------------------------------------------------------------------------
 
-  Future<void> sendPhoneVerificationCode({
+  Future<bool> sendPhoneOtp({required String phoneNumber}) async {
+    _setLoading(true);
+    _errorMessage = '';
+
+    try {
+      final normalizedPhone = _normalizeGhanaPhoneNumber(phoneNumber);
+
+      if (normalizedPhone == null) {
+        _errorMessage = 'Please enter a valid Ghana phone number.';
+        return false;
+      }
+
+      final callable = _functions.httpsCallable('sendPhoneOtp');
+
+      final result = await callable.call(<String, dynamic>{
+        'phoneNumber': normalizedPhone,
+      });
+
+      final data = result.data;
+
+      if (data is Map && data['success'] == true) {
+        return true;
+      }
+
+      _errorMessage = 'Unable to send verification code. Please try again.';
+      return false;
+    } on FirebaseFunctionsException catch (e) {
+      _errorMessage = _mapFunctionsError(e);
+      return false;
+    } catch (_) {
+      _errorMessage =
+          'Unable to send verification code. Check your internet connection.';
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> verifyPhoneOtp({
     required String phoneNumber,
-    int? forceResendingToken,
-    required void Function(PhoneAuthCredential credential)
-    verificationCompleted,
-    required void Function(FirebaseAuthException error) verificationFailed,
-    required void Function(String verificationId, int? resendToken) codeSent,
-    required void Function(String verificationId) codeAutoRetrievalTimeout,
+    required String code,
   }) async {
-    await _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      forceResendingToken: forceResendingToken,
-      timeout: const Duration(seconds: 60),
-      verificationCompleted: verificationCompleted,
-      verificationFailed: verificationFailed,
-      codeSent: codeSent,
-      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
-    );
+    _setLoading(true);
+    _errorMessage = '';
+
+    try {
+      final normalizedPhone = _normalizeGhanaPhoneNumber(phoneNumber);
+      final trimmedCode = code.trim();
+
+      if (normalizedPhone == null) {
+        _errorMessage = 'Please enter a valid Ghana phone number.';
+        return false;
+      }
+
+      if (!RegExp(r'^\d{6}$').hasMatch(trimmedCode)) {
+        _errorMessage = 'Enter the 6-digit verification code.';
+        return false;
+      }
+
+      final callable = _functions.httpsCallable('verifyPhoneOtp');
+
+      final result = await callable.call(<String, dynamic>{
+        'phoneNumber': normalizedPhone,
+        'code': trimmedCode,
+      });
+
+      final data = result.data;
+
+      if (data is Map && data['success'] == true && data['verified'] == true) {
+        final returnedPhone = data['phoneNumber']?.toString().trim();
+
+        _verifiedPhoneNumber = returnedPhone == null || returnedPhone.isEmpty
+            ? normalizedPhone
+            : returnedPhone;
+        _phoneVerifiedAt = DateTime.now();
+
+        return true;
+      }
+
+      _errorMessage = 'The verification code could not be confirmed.';
+      return false;
+    } on FirebaseFunctionsException catch (e) {
+      _errorMessage = _mapFunctionsError(e);
+      return false;
+    } catch (_) {
+      _errorMessage =
+          'Unable to verify the code. Check your internet connection.';
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  bool _hasFreshPhoneVerification(String phoneNumber) {
+    final normalizedPhone = _normalizeGhanaPhoneNumber(phoneNumber);
+
+    if (normalizedPhone == null ||
+        _verifiedPhoneNumber == null ||
+        _phoneVerifiedAt == null) {
+      return false;
+    }
+
+    final age = DateTime.now().difference(_phoneVerifiedAt!);
+
+    return normalizedPhone == _verifiedPhoneNumber &&
+        age <= const Duration(minutes: 10);
   }
 
   // ---------------------------------------------------------------------------
   // SIGNUP
   // ---------------------------------------------------------------------------
 
-  /// Finalizes registration only after the user has received an OTP and we
-  /// have a [PhoneAuthCredential] created from that verification session.
+  /// Finalizes registration only after Arkesel has confirmed the OTP.
   ///
-  /// Flow:
-  /// 1. Create the email/password Firebase user.
-  /// 2. Link the verified phone credential to that SAME Firebase user.
-  /// 3. Create the correct Firestore role document.
-  /// 4. Cache the role locally.
-  ///
-  /// This keeps email/password and phone authentication on one Firebase UID.
-  Future<bool> completeSignupWithVerifiedPhone({
+  /// The phone number is verified by the Cloud Function first. Firebase Auth
+  /// is then used only for the email/password account, while the verified
+  /// phone number is stored in the user's Firestore profile.
+  Future<bool> completeSignupAfterPhoneVerification({
     required String fullName,
     required String email,
     required String laundryServiceName,
     required String password,
     required String role,
-    required PhoneAuthCredential phoneCredential,
+    required String phoneNumber,
   }) async {
     _setLoading(true);
     _errorMessage = '';
@@ -157,6 +246,7 @@ class AuthProvider extends ChangeNotifier {
       final trimmedFullName = fullName.trim();
       final trimmedEmail = email.trim();
       final trimmedLaundryName = laundryServiceName.trim();
+      final normalizedPhone = _normalizeGhanaPhoneNumber(phoneNumber);
 
       if (selectedRole != 'rider' && selectedRole != 'laundry') {
         _errorMessage = 'Invalid role selected.';
@@ -170,6 +260,17 @@ class AuthProvider extends ChangeNotifier {
 
       if (selectedRole == 'laundry' && trimmedLaundryName.isEmpty) {
         _errorMessage = 'Please enter your laundry service name.';
+        return false;
+      }
+
+      if (normalizedPhone == null) {
+        _errorMessage = 'Please enter a valid Ghana phone number.';
+        return false;
+      }
+
+      if (!_hasFreshPhoneVerification(normalizedPhone)) {
+        _errorMessage =
+            'Please verify your phone number before creating the account.';
         return false;
       }
 
@@ -187,57 +288,30 @@ class AuthProvider extends ChangeNotifier {
         );
       }
 
-      // Link the OTP-verified phone credential to the SAME Firebase user.
-      final linkedCredential = await newlyCreatedUser.linkWithCredential(
-        phoneCredential,
-      );
-
-      final linkedUser = linkedCredential.user;
-
-      if (linkedUser == null) {
-        throw FirebaseAuthException(
-          code: 'phone-link-failed',
-          message: 'Phone verification could not be completed.',
-        );
-      }
-
-      await linkedUser.reload();
-
-      final refreshedUser = _auth.currentUser;
-
-      if (refreshedUser == null || refreshedUser.phoneNumber == null) {
-        throw FirebaseAuthException(
-          code: 'phone-link-failed',
-          message: 'Phone verification could not be confirmed.',
-        );
-      }
-
-      final verifiedPhoneNumber = refreshedUser.phoneNumber!;
-
       final displayName = selectedRole == 'rider'
           ? trimmedFullName
           : trimmedLaundryName;
 
-      await refreshedUser.updateDisplayName(displayName);
+      await newlyCreatedUser.updateDisplayName(displayName);
 
       String? riderSessionId;
 
       if (selectedRole == 'rider') {
-        riderSessionId = _generateSessionId(refreshedUser.uid);
+        riderSessionId = _generateSessionId(newlyCreatedUser.uid);
 
         await _createRiderDocument(
-          uid: refreshedUser.uid,
+          uid: newlyCreatedUser.uid,
           fullName: trimmedFullName,
           email: trimmedEmail,
-          phoneNumber: verifiedPhoneNumber,
+          phoneNumber: normalizedPhone,
           sessionId: riderSessionId,
         );
       } else {
         await _createLaundryDocument(
-          uid: refreshedUser.uid,
+          uid: newlyCreatedUser.uid,
           laundryName: trimmedLaundryName,
           email: trimmedEmail,
-          phoneNumber: verifiedPhoneNumber,
+          phoneNumber: normalizedPhone,
         );
       }
 
@@ -246,14 +320,16 @@ class AuthProvider extends ChangeNotifier {
 
       try {
         await cacheUserRole(
-          uid: refreshedUser.uid,
+          uid: newlyCreatedUser.uid,
           role: selectedRole,
           sessionId: riderSessionId,
         );
       } catch (_) {
-        // Do not fail a valid signup because SharedPreferences could not write.
-        // Firestore remains the source of truth.
+        // Firestore remains the source of truth if local caching fails.
       }
+
+      _verifiedPhoneNumber = null;
+      _phoneVerifiedAt = null;
 
       notifyListeners();
       return true;
@@ -419,11 +495,11 @@ class AuthProvider extends ChangeNotifier {
   // VERIFY / UPGRADE AN EXISTING ACCOUNT
   // ---------------------------------------------------------------------------
 
-  /// Links an OTP-verified phone credential to an already authenticated
-  /// email/password account. This is useful for older Lundri accounts that
-  /// existed before phone verification became mandatory.
-  Future<bool> linkVerifiedPhoneToCurrentUser({
-    required PhoneAuthCredential phoneCredential,
+  /// Applies an Arkesel-verified phone number to an already authenticated
+  /// Lundri account. This is mainly for older accounts created before phone
+  /// verification became mandatory.
+  Future<bool> applyVerifiedPhoneToCurrentUser({
+    required String phoneNumber,
   }) async {
     _setLoading(true);
     _errorMessage = '';
@@ -436,19 +512,19 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
 
-      if (user.phoneNumber == null) {
-        await user.linkWithCredential(phoneCredential);
-        await user.reload();
-      }
+      final normalizedPhone = _normalizeGhanaPhoneNumber(phoneNumber);
 
-      final refreshedUser = _auth.currentUser;
-
-      if (refreshedUser == null || refreshedUser.phoneNumber == null) {
-        _errorMessage = 'Phone verification could not be confirmed.';
+      if (normalizedPhone == null) {
+        _errorMessage = 'Please enter a valid Ghana phone number.';
         return false;
       }
 
-      final role = await _getUserRoleFromFirestore(refreshedUser.uid);
+      if (!_hasFreshPhoneVerification(normalizedPhone)) {
+        _errorMessage = 'Please verify your phone number before continuing.';
+        return false;
+      }
+
+      final role = await _getUserRoleFromFirestore(user.uid);
 
       if (role == null) {
         _errorMessage = 'Unable to determine account role.';
@@ -456,39 +532,35 @@ class AuthProvider extends ChangeNotifier {
       }
 
       final collectionName = role == 'rider' ? 'riders' : 'laundries';
-      final phoneNumber = refreshedUser.phoneNumber!;
 
       final updates = <String, dynamic>{
-        'contact.phoneNumber': phoneNumber,
+        'contact.phoneNumber': normalizedPhone,
         'auth.phoneVerified': true,
         'auth.phoneVerifiedAt': FieldValue.serverTimestamp(),
         'timestamps.updatedAt': FieldValue.serverTimestamp(),
       };
 
       if (role == 'laundry') {
-        updates['owner.phoneNumber'] = phoneNumber;
+        updates['owner.phoneNumber'] = normalizedPhone;
       }
 
-      await _firestore
-          .collection(collectionName)
-          .doc(refreshedUser.uid)
-          .update(updates);
+      await _firestore.collection(collectionName).doc(user.uid).update(updates);
 
       _selectedRole = role;
 
       try {
-        await cacheUserRole(uid: refreshedUser.uid, role: role);
+        await cacheUserRole(uid: user.uid, role: role);
       } catch (_) {
         // Firestore remains the source of truth.
       }
 
+      _verifiedPhoneNumber = null;
+      _phoneVerifiedAt = null;
+
       notifyListeners();
       return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapFirebaseAuthError(e);
-      return false;
     } catch (_) {
-      _errorMessage = 'Unable to verify this phone number. Please try again.';
+      _errorMessage = 'Unable to save the verified phone number.';
       return false;
     } finally {
       _setLoading(false);
@@ -538,7 +610,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> isCurrentUserPhoneVerified() async {
     final user = _auth.currentUser;
-    if (user == null || user.phoneNumber == null) return false;
+    if (user == null) return false;
 
     final role = await _getUserRoleFromFirestore(user.uid);
     if (role == null) return false;
@@ -677,6 +749,49 @@ class AuthProvider extends ChangeNotifier {
       default:
         return e.message ?? 'Authentication failed.';
     }
+  }
+
+  String _mapFunctionsError(FirebaseFunctionsException e) {
+    final providerMessage = e.message?.trim();
+
+    if (providerMessage != null && providerMessage.isNotEmpty) {
+      return providerMessage;
+    }
+
+    switch (e.code) {
+      case 'invalid-argument':
+        return 'Please check the phone number or verification code.';
+      case 'resource-exhausted':
+        return 'Too many attempts. Please wait and try again.';
+      case 'deadline-exceeded':
+        return 'The verification code has expired. Request a new code.';
+      case 'failed-precondition':
+        return 'Please request a new verification code and try again.';
+      case 'unavailable':
+        return 'Verification service is temporarily unavailable.';
+      case 'unauthenticated':
+        return 'Authentication is required.';
+      default:
+        return 'Phone verification failed. Please try again.';
+    }
+  }
+
+  String? _normalizeGhanaPhoneNumber(String? value) {
+    if (value == null) return null;
+
+    var digits = value.trim().replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.startsWith('233')) {
+      digits = digits.substring(3);
+    } else if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+
+    if (!RegExp(r'^\d{9}$').hasMatch(digits)) {
+      return null;
+    }
+
+    return '+233$digits';
   }
 
   void _setLoading(bool value) {
